@@ -1,21 +1,52 @@
 import pandas as pd
 import numpy as np
 import json
+import requests
 from sklearn.ensemble import HistGradientBoostingRegressor
 
-# 1. Load Data
-try:
-    df = pd.read_csv('ukhsa-chart-download.csv')
-except FileNotFoundError:
-    print("Error: 'ukhsa-chart-download.csv' not found.")
-    exit()
+# -------------------------------------------------------
+# STEP 1: Fetch Live Data from UKHSA API
+# -------------------------------------------------------
+print("Fetching live data from UKHSA API...")
+
+# The API URL for Influenza Testing Positivity (England)
+api_url = "https://api.ukhsa-dashboard.data.gov.uk/themes/infectious_disease/sub_themes/respiratory/topics/Influenza/geography_types/Nation/geographies/England/metrics/influenza_testing_positivityByWeek"
+
+# The API is paginated, so we loop to get all pages
+all_data = []
+current_url = f"{api_url}?page_size=365&format=json" # Get 1 year per request to speed it up
+
+while current_url:
+    try:
+        response = requests.get(current_url)
+        response.raise_for_status() # Check for errors
+        data = response.json()
+        
+        # Add the results from this page to our list
+        all_data.extend(data['results'])
+        
+        # Check if there is a next page
+        current_url = data['next']
+        
+    except Exception as e:
+        print(f"Error fetching data: {e}")
+        break
+
+print(f"Downloaded {len(all_data)} records.")
+
+# Convert to DataFrame
+df = pd.DataFrame(all_data)
+
+# Ensure we have the columns we need (renaming if necessary or just using existing)
+# The API returns 'date' and 'metric_value' which matches your original script
+df = df[['date', 'metric_value']].copy()
 
 df['date'] = pd.to_datetime(df['date'])
 df.sort_values('date', inplace=True)
 df.set_index('date', inplace=True)
 
 # -------------------------------------------------------
-# STEP A: Train Seasonal Model
+# STEP 2: Train Seasonal Model (The Baseline)
 # -------------------------------------------------------
 df['Week_Number'] = df.index.isocalendar().week.astype(int)
 df['Month'] = df.index.month
@@ -26,11 +57,12 @@ target = 'metric_value'
 model_seasonal = HistGradientBoostingRegressor(categorical_features=[0, 1], random_state=42)
 model_seasonal.fit(df[seasonal_features], df[target])
 
+# Calculate Baseline
 df['Seasonal_Pred'] = model_seasonal.predict(df[seasonal_features])
 df['Residual'] = df['metric_value'] - df['Seasonal_Pred']
 
 # -------------------------------------------------------
-# STEP B: Train Recursive Model on RESIDUALS
+# STEP 3: Train Recursive Model on RESIDUALS
 # -------------------------------------------------------
 df['Res_Lag_1'] = df['Residual'].shift(1)
 df['Res_Lag_2'] = df['Residual'].shift(2)
@@ -44,7 +76,7 @@ model_resid = HistGradientBoostingRegressor(random_state=42)
 model_resid.fit(df_resid[resid_features], df_resid[resid_target])
 
 # -------------------------------------------------------
-# STEP C: Hybrid Forecasting Loop
+# STEP 4: Hybrid Forecasting Loop
 # -------------------------------------------------------
 last_date = df.index[-1]
 history_residuals = df['Residual'].iloc[-3:].tolist()
@@ -73,13 +105,12 @@ for i in range(52): # Forecast 1 year ahead
     future_forecasts.append({
         'date': current_date.strftime('%Y-%m-%d'),
         'Seasonal_Base': float(seasonal_base),
-        'Final_Forecast': float(final_pred) # Ensure it's not negative if desired: max(0, float(final_pred))
+        'Final_Forecast': float(final_pred)
     })
 
 # -------------------------------------------------------
-# STEP D: Export Data for Web
+# STEP 5: Export Data for Web
 # -------------------------------------------------------
-# We create a dictionary containing lists for the frontend to plot
 output_data = {
     "history": {
         "dates": df.index.strftime('%Y-%m-%d').tolist(),
@@ -95,4 +126,4 @@ output_data = {
 with open('dashboard_data.json', 'w') as f:
     json.dump(output_data, f)
 
-print("Success: 'dashboard_data.json' created.")
+print("Success: Live data fetched and 'dashboard_data.json' updated.")
