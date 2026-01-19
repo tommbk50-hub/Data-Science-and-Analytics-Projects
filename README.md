@@ -1,4 +1,4 @@
-# Influenza and COVOD case prediction using machine learning
+# Influenza and COVID case prediction using machine learning
 
 This dashboard predicts future trends using a HistGradientBoostingRegressor trained on historical surveillance data. The system is fully automated: it retrieves live data directly from the UKHSA public API and retrains the model every week via GitHub Actions, ensuring the forecast is always based on the latest available statistics.
 
