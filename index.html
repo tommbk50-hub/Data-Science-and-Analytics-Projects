@@ -16,6 +16,7 @@
         .dashboard-container { max-width: 1400px; margin: 30px auto; padding: 0 20px; }
         .card { border: none; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); background: white; margin-bottom: 25px; }
         .header-title { font-weight: 700; color: #1a202c; letter-spacing: -0.5px; }
+        
         .chart-container { height: 450px; width: 100%; }
         .metric-card-header { background: #fff; border-bottom: 1px solid #eee; padding: 15px 20px; border-radius: 12px 12px 0 0; }
         .metric-title { font-size: 1.1rem; font-weight: 700; color: #2c3e50; margin: 0; }
@@ -23,6 +24,7 @@
         .description-text { font-size: 0.95rem; line-height: 1.6; color: #495057; }
         .description-text a { text-decoration: none; font-weight: 500; }
         
+        /* Tech Section Styles */
         .tech-section h5 { font-weight: 700; color: #2c3e50; margin-top: 20px; }
         .math-block { background: #f8f9fa; padding: 15px; border-radius: 8px; border: 1px solid #e9ecef; margin: 15px 0; overflow-x: auto; }
     </style>
@@ -53,12 +55,12 @@
                 <h1 class="header-title mb-3">England Influenza Forecast Dashboard</h1>
                 <div class="description-text">
                     <p>
-                        This dashboard provides a comprehensive 52-week forecast for Influenza in England across four critical metrics: 
-                        <strong>Transmission (PCR Positivity)</strong>, <strong>Primary Care Impact (GP Consultations)</strong>, and <strong>Secondary Care Impact (Hospital & ICU Admissions)</strong>.
+                        This dashboard provides a comprehensive 52-week forecast for Influenza in England across three critical metrics: 
+                        <strong>PCR Positivity</strong>, <strong>Hospital Admissions</strong>, and <strong>ICU/HDU Admissions</strong>.
                     </p>
                     <p>
                         Predictions are generated using a <a href="https://scikit-learn.org/stable/modules/ensemble.html#histogram-based-gradient-boosting" target="_blank">HistGradientBoostingRegressor</a> hybrid model.
-                        The system is fully automated: it retrieves live data directly from the UKHSA public API and retrains all four models every week via GitHub Actions.
+                        The system is fully automated: it retrieves live data directly from the UKHSA public API and retrains all models every week via GitHub Actions.
                     </p>
                     <p class="text-muted small">
                         Data source: UK Health Security Agency. Last updated: <span id="last-updated" class="fw-bold">...</span>.
@@ -73,7 +75,7 @@
         </div>
 
         <div class="row">
-            <div class="col-xl-6">
+            <div class="col-12">
                 <div class="card">
                     <div class="metric-card-header d-flex justify-content-between align-items-center">
                         <h5 class="metric-title"><i class="fas fa-vial text-primary me-2"></i>PCR Positivity Rate</h5>
@@ -84,7 +86,7 @@
                     </div>
                 </div>
             </div>
-            
+
             <div class="col-xl-6">
                 <div class="card">
                     <div class="metric-card-header d-flex justify-content-between align-items-center">
@@ -114,12 +116,58 @@
             <div class="col-12">
                 <div class="card p-5 tech-section">
                     <h4 class="fw-bold text-primary mb-4"><i class="fas fa-cogs me-2"></i>Technical Methodology</h4>
-                    <p>Our forecasting engine utilises a <strong>Hybrid Approach</strong>. For each metric independently, we first isolate the predictable seasonal cycle, and then use Scikit-Learn's <code>HistGradientBoostingRegressor</code> to model the residuals.</p>
                     
-                    <div class="alert alert-light border mt-3">
-                        <strong>Source Reference:</strong> 
-                        <a href="https://scikit-learn.org/stable/modules/ensemble.html#histogram-based-gradient-boosting" target="_blank" class="ms-2">Scikit-Learn User Guide: Histogram-Based Gradient Boosting</a>
+                    <p>Our forecasting engine utilises a <strong>Hybrid Approach</strong>. We first isolate the predictable seasonal cycle, and then use Scikit-Learn's <code>HistGradientBoostingRegressor</code> to model the residuals (the difference between the seasonal baseline and reality).</p>
+
+                    <hr class="my-4">
+
+                    <h5>1. Histogram-Based Gradient Boosting (HGBR)</h5>
+                    <p>
+                        The <code>HistGradientBoostingRegressor</code> is an implementation of Gradient Boosted Decision Trees (GBDT), inspired by LightGBM. It is significantly faster than traditional GBDT for large datasets because it uses <strong>histogram binning</strong>.
+                    </p>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6><strong>Step A: Data Discretisation (Binning)</strong></h6>
+                            <p>Standard decision trees sort the feature values at every node split, which has a complexity of \(O(N \log N)\). HGBR instead discretises the continuous input features into integer-valued bins (max 255 bins).</p>
+                            <div class="math-block">
+                                $$ X_{binned} = \text{digitize}(X, \text{bins}) \in \{0, \dots, 255\} $$
+                            </div>
+                            <p class="small text-muted">This reduces the complexity of finding the best split to \(O(N)\).</p>
+                        </div>
+                        <div class="col-md-6">
+                            <h6><strong>Step B: The Additive Model</strong></h6>
+                            <p>The model is an ensemble of \(M\) decision trees. It is an additive model where the prediction at step \(m\), denoted as \(F_m(x)\), is the sum of the previous prediction and a new tree \(h_m(x)\).</p>
+                            <div class="math-block">
+                                $$ F_m(x) = F_{m-1}(x) + \nu \cdot h_m(x) $$
+                            </div>
+                            <p class="small text-muted">Where \(\nu\) is the learning rate (shrinkage) that controls how strongly each new tree corrects the previous errors.</p>
+                        </div>
                     </div>
+
+                    <div class="row mt-3">
+                        <div class="col-12">
+                            <h6><strong>Step C: Gradient Descent Optimisation</strong></h6>
+                            <p>
+                                At each iteration \(m\), the new tree \(h_m(x)\) is trained to predict the <strong>negative gradient</strong> of the loss function. For our Least Squares loss function, this is the residual:
+                            </p>
+                            <div class="math-block text-center">
+                                $$ r_i = - \frac{\partial L(y_i, F_{m-1}(x_i))}{\partial F_{m-1}(x_i)} = y_i - F_{m-1}(x_i) $$
+                            </div>
+                            <p>
+                                By fitting the new tree to these residuals \(r_i\), the model iteratively corrects its own mistakes.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-light border mt-4">
+                        <strong>Source References:</strong> 
+                        <ul class="mb-0 mt-2 small">
+                            <li><a href="https://scikit-learn.org/stable/modules/ensemble.html#histogram-based-gradient-boosting" target="_blank">Scikit-Learn User Guide: Histogram-Based Gradient Boosting</a></li>
+                            <li><a href="https://api.ukhsa-dashboard.data.gov.uk/themes/infectious_disease/sub_themes/respiratory/topics/Influenza/geography_types/Nation/geographies/England/metrics/influenza_testing_positivityByWeek" target="_blank">UKHSA API Endpoint (JSON)</a></li>
+                        </ul>
+                    </div>
+
                 </div>
             </div>
         </div>
@@ -128,7 +176,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        // Mapping JSON keys to HTML Div IDs
+        // Mapping JSON keys to HTML Div IDs (GP Removed)
         const chartsConfig = [
             { key: 'positivity', divId: 'chart-positivity', color: '#007bff' }, // Blue
             { key: 'hospital',   divId: 'chart-hospital',   color: '#dc3545' }, // Red
@@ -139,16 +187,13 @@
             .then(response => response.json())
             .then(data => {
                 
-                // Update Date Stamp
                 document.getElementById('last-updated').innerText = new Date().toLocaleDateString('en-GB');
 
-                // Loop through each chart configuration and render
                 chartsConfig.forEach(config => {
                     const metricData = data[config.key];
                     
                     if (!metricData) {
                         console.warn(`No data found for ${config.key}`);
-                        document.getElementById(config.divId).innerHTML = '<p class="text-center text-muted mt-5">Data currently unavailable</p>';
                         return;
                     }
 
@@ -215,7 +260,7 @@
             .catch(err => {
                 console.error("Error:", err);
                 document.querySelector('.dashboard-container').innerHTML += 
-                    `<div class="alert alert-danger">Error loading data.json. Check console for details.</div>`;
+                    `<div class="alert alert-danger">Error loading data.json. Ensure the Python script has run successfully.</div>`;
             });
     </script>
 </body>
