@@ -8,6 +8,8 @@
     <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     
     <style>
         body { background-color: #f0f2f5; font-family: 'Roboto', sans-serif; color: #333; }
@@ -16,20 +18,17 @@
         .card:hover { transform: translateY(-2px); }
         .header-title { font-weight: 700; color: #1a202c; letter-spacing: -0.5px; }
         
-        /* Highlight Box for Data Source */
         .source-highlight { background-color: #e8f0fe; border-left: 5px solid #007bff; padding: 15px; border-radius: 4px; margin-bottom: 20px; }
         .source-label { font-size: 0.85rem; font-weight: 700; text-transform: uppercase; color: #007bff; display: block; margin-bottom: 4px; }
         .source-value { font-size: 1.1rem; font-weight: 500; color: #2c3e50; }
 
-        /* Diagram Styles */
-        .diagram-container { display: flex; align-items: center; justify-content: center; gap: 20px; padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px dashed #ced4da; }
-        .step-box { background: white; border: 1px solid #dee2e6; border-radius: 8px; padding: 15px; width: 140px; text-align: center; font-size: 0.85rem; box-shadow: 0 2px 4px rgba(0,0,0,0.05); position: relative; }
-        .step-box i { font-size: 1.5rem; color: #007bff; margin-bottom: 10px; display: block; }
-        .arrow { font-size: 1.2rem; color: #adb5bd; }
-        
-        /* Metric Cards */
         .metric-value { font-size: 2.5rem; font-weight: 700; color: #2d3748; }
         .metric-label { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; color: #718096; font-weight: 600; }
+
+        /* Tech Section Styles */
+        .tech-section h5 { font-weight: 700; color: #2c3e50; margin-top: 20px; }
+        .math-block { background: #f8f9fa; padding: 15px; border-radius: 8px; border: 1px solid #e9ecef; margin: 15px 0; overflow-x: auto; }
+        .tech-list li { margin-bottom: 10px; }
     </style>
 </head>
 <body>
@@ -111,42 +110,62 @@
 
         <div class="row mt-4">
             <div class="col-12">
-                <div class="card p-4">
-                    <h4 class="fw-bold mb-4"><i class="fas fa-brain text-primary me-2"></i>How the Model Works</h4>
+                <div class="card p-5 tech-section">
+                    <h4 class="fw-bold text-primary mb-4"><i class="fas fa-cogs me-2"></i>Technical Methodology</h4>
+                    
+                    <p>Our forecasting engine utilises a <strong>Hybrid Approach</strong>. We first isolate the predictable seasonal cycle, and then use Scikit-Learn's <code>HistGradientBoostingRegressor</code> to model the residuals (the difference between the seasonal baseline and reality).</p>
+
+                    <hr class="my-4">
+
+                    <h5>1. Histogram-Based Gradient Boosting (HGBR)</h5>
+                    <p>
+                        The <code>HistGradientBoostingRegressor</code> is an implementation of Gradient Boosted Decision Trees (GBDT), inspired by LightGBM. It is significantly faster than traditional GBDT for large datasets (like our weekly time series) because it uses <strong>histogram binning</strong>.
+                    </p>
                     
                     <div class="row">
-                        <div class="col-lg-6">
-                            <p>We use the <strong>HistGradientBoostingRegressor</strong>, a modern machine learning algorithm optimised for speed and accuracy on large datasets. It works differently than traditional regression:</p>
-                            
-                            <ul class="list-group list-group-flush mb-4">
-                                <li class="list-group-item bg-transparent"><i class="fas fa-bolt text-warning me-2"></i> <strong>Binning:</strong> Instead of sorting millions of numbers, it groups data into 255 "bins" (histograms). This makes it hundreds of times faster than standard Gradient Boosting.</li>
-                                <li class="list-group-item bg-transparent"><i class="fas fa-layer-group text-info me-2"></i> <strong>Ensembling:</strong> It builds hundreds of small "decision trees." Each new tree calculates the error (residual) of the previous tree and tries to fix it.</li>
-                                <li class="list-group-item bg-transparent"><i class="fas fa-chart-line text-success me-2"></i> <strong>Hybrid Approach:</strong> Our specific implementation first removes the annual seasonal trend (Baseline) and then uses the model to predict the specific deviations (Residuals) for this year.</li>
-                            </ul>
-                        </div>
-                        
-                        <div class="col-lg-6">
-                            <div class="diagram-container h-100">
-                                <div class="step-box">
-                                    <i class="fas fa-database"></i>
-                                    <strong>Raw Data</strong><br>
-                                    <span class="text-muted small">Positivity Rate (PCR)</span>
-                                </div>
-                                <div class="arrow"><i class="fas fa-arrow-right"></i></div>
-                                <div class="step-box">
-                                    <i class="fas fa-th-large"></i>
-                                    <strong>Binning</strong><br>
-                                    <span class="text-muted small">Group into 255 Bins</span>
-                                </div>
-                                <div class="arrow"><i class="fas fa-arrow-right"></i></div>
-                                <div class="step-box">
-                                    <i class="fas fa-tree"></i>
-                                    <strong>Tree Building</strong><br>
-                                    <span class="text-muted small">Predict Error (Residual)</span>
-                                </div>
+                        <div class="col-md-6">
+                            <h6><strong>Step A: Data Discretisation (Binning)</strong></h6>
+                            <p>Standard decision trees sort the feature values at every node split, which has a complexity of \(O(N \log N)\). HGBR instead discretises the continuous input features (e.g., previous weeks' residuals) into integer-valued bins (max 255 bins).</p>
+                            <div class="math-block">
+                                $$ X_{binned} = \text{digitize}(X, \text{bins}) \in \{0, \dots, 255\} $$
                             </div>
+                            <p class="small text-muted">This reduces the complexity of finding the best split to \(O(N)\), as the algorithm only needs to construct histograms of the data distribution.</p>
+                        </div>
+                        <div class="col-md-6">
+                            <h6><strong>Step B: The Additive Model</strong></h6>
+                            <p>The model is an ensemble of \(M\) decision trees. It is an additive model where the prediction at step \(m\), denoted as \(F_m(x)\), is the sum of the previous prediction and a new tree \(h_m(x)\).</p>
+                            <div class="math-block">
+                                $$ F_m(x) = F_{m-1}(x) + \nu \cdot h_m(x) $$
+                            </div>
+                            <p class="small text-muted">Where \(\nu\) is the learning rate (shrinkage) that controls how strongly each new tree corrects the previous errors.</p>
                         </div>
                     </div>
+
+                    <div class="row mt-3">
+                        <div class="col-12">
+                            <h6><strong>Step C: Gradient Descent Optimisation</strong></h6>
+                            <p>
+                                At each iteration \(m\), the new tree \(h_m(x)\) is trained to predict the <strong>negative gradient</strong> of the loss function with respect to the previous prediction. For our Least Squares loss function \(L(y, F(x)) = \frac{1}{2}(y - F(x))^2\), this negative gradient is simply the residual:
+                            </p>
+                            <div class="math-block text-center">
+                                $$ r_i = - \frac{\partial L(y_i, F_{m-1}(x_i))}{\partial F_{m-1}(x_i)} = y_i - F_{m-1}(x_i) $$
+                            </div>
+                            <p>
+                                By fitting the new tree to these residuals \(r_i\), the model iteratively corrects its own mistakes, effectively performing gradient descent in function space.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-light border mt-4">
+                        <strong>Source Reference:</strong> 
+                        <br>
+                        <small>
+                            <a href="https://scikit-learn.org/stable/modules/ensemble.html#histogram-based-gradient-boosting" target="_blank">Scikit-Learn User Guide: Histogram-Based Gradient Boosting</a>
+                            <br>
+                            <a href="https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.HistGradientBoostingRegressor.html" target="_blank">API Reference: HistGradientBoostingRegressor</a>
+                        </small>
+                    </div>
+
                 </div>
             </div>
         </div>
