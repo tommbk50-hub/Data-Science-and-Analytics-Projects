@@ -18,9 +18,9 @@
         .card:hover { transform: translateY(-2px); }
         .header-title { font-weight: 700; color: #1a202c; letter-spacing: -0.5px; }
         
-        .source-highlight { background-color: #e8f0fe; border-left: 5px solid #007bff; padding: 15px; border-radius: 4px; margin-bottom: 20px; }
-        .source-label { font-size: 0.85rem; font-weight: 700; text-transform: uppercase; color: #007bff; display: block; margin-bottom: 4px; }
-        .source-value { font-size: 1.1rem; font-weight: 500; color: #2c3e50; }
+        .description-text { font-size: 1rem; line-height: 1.6; color: #495057; }
+        .description-text a { text-decoration: none; font-weight: 500; }
+        .description-text a:hover { text-decoration: underline; }
 
         .metric-value { font-size: 2.5rem; font-weight: 700; color: #2d3748; }
         .metric-label { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; color: #718096; font-weight: 600; }
@@ -49,7 +49,7 @@
                         <li><a class="dropdown-item" href="https://api.ukhsa-dashboard.data.gov.uk/themes/infectious_disease/sub_themes/respiratory/topics/Influenza/geography_types/Nation/geographies/England/metrics/influenza_testing_positivityByWeek?format=json" target="_blank">Download JSON</a></li>
                     </ul>
                 </div>
-                <a href="https://github.com/tommbk50-hub/Data-Science-and-Anakytics-Projects" class="btn btn-light btn-sm fw-bold">GitHub</a>
+                <a href="https://github.com/tommbk50-hub/UK-respiratory-illness-case-predictions-using-machine-learning" class="btn btn-light btn-sm fw-bold">GitHub</a>
             </div>
         </div>
     </nav>
@@ -58,24 +58,25 @@
         
         <div class="row mb-4">
             <div class="col-md-8">
-                <h1 class="header-title">England Influenza Positivity Forecast</h1>
+                <h1 class="header-title mb-3">England Influenza Positivity Forecast</h1>
                 
-                <div class="source-highlight mt-3">
-                    <span class="source-label">Dataset Used</span>
-                    <span class="source-value">Weekly positivity of people receiving a PCR test (England)</span>
-                    <div class="small text-muted mt-1">Source: UK Health Security Agency (Respiratory Viruses > Influenza)</div>
+                <div class="description-text">
+                    <p>
+                        This dashboard tracks and predicts the percentage of people who received a PCR test for Influenza (flu) and had at least one positive test result in the same 7 days. Here we use a machine learning model to predict future trends so allow appropriate response and preparation, for example, for A&E departments in hospitals. Using a <a href="https://scikit-learn.org/stable/modules/ensemble.html#histogram-based-gradient-boosting" target="_blank">HistGradientBoostingRegressor model</a> trained on historical surveillance data from the UK Health Security Agency, we are able to get accurate predictions that are automatically updated each week.
+                    </p>
+                    <p>
+                        The system is fully automated: it retrieves live data directly from the UKHSA public API and retrains the model every week via GitHub Actions, ensuring the forecast is always based on the latest available statistics.
+                    </p>
+                    <p class="text-muted small">
+                        Data is shown by specimen date (the date the sample was collected). Last date updated was week beginning <span id="latest-data-date" class="fw-bold">...</span>.
+                    </p>
                 </div>
-
-                <p class="text-muted" style="line-height: 1.6;">
-                    This dashboard predicts future trends using a <strong>HistGradientBoostingRegressor</strong> trained on historical surveillance data. 
-                    The system is fully automated: it <strong>retrieves live data</strong> directly from the UKHSA public API and retrains the model <strong>every week</strong> via GitHub Actions, ensuring the forecast is always based on the latest available statistics.
-                </p>
             </div>
             <div class="col-md-4 text-md-end">
                 <span class="badge bg-success bg-opacity-10 text-success border border-success px-3 py-2 rounded-pill">
                     <i class="fas fa-check-circle me-1"></i> Model Active
                 </span>
-                <div class="text-muted small mt-2">Last Updated: <span id="last-updated" class="fw-bold">...</span></div>
+                <div class="text-muted small mt-2">Dashboard Updated: <span id="last-updated">...</span></div>
             </div>
         </div>
 
@@ -268,6 +269,14 @@
                 document.getElementById('next-week').innerText = nextVal.toFixed(1) + '%';
                 
                 document.getElementById('last-updated').innerText = new Date().toLocaleDateString('en-GB');
+
+                // DYNAMIC DATE UPDATE FOR DESCRIPTION
+                // Format the last historical date to "5 Jan 2026" style
+                if(lastHistoryDate) {
+                    const dateObj = new Date(lastHistoryDate);
+                    const options = { day: 'numeric', month: 'short', year: 'numeric' };
+                    document.getElementById('latest-data-date').innerText = dateObj.toLocaleDateString('en-GB', options);
+                }
             })
             .catch(err => console.error("Error:", err));
     </script>
