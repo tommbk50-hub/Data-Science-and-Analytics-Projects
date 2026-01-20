@@ -236,18 +236,26 @@
     
     <span class="code-keyword">return</span> df</code></pre>
 
-                    <h6 class="mt-4"><strong>C. Hybrid Training with Quantile Regression (Intervals)</strong></h6>
-                    <p>We train three versions of the model: one for the mean forecast, and two for the 5th and 95th percentiles (using Quantile Loss) to generate the prediction intervals.</p>
+                    <h6 class="mt-4"><strong>C. Generating Prediction Intervals (Confidence Cones)</strong></h6>
+                    <p>
+                        To generate the shaded confidence cone (Confidence Cone 90%), we train <strong>three separate models</strong> using Quantile Regression logic.
+                    </p>
+                    <ul>
+                        <li><strong>Model 1 (Mean Forecast):</strong> Uses <code>loss='squared_error'</code> to predict the most likely central value.</li>
+                        <li><strong>Model 2 (Upper Bound):</strong> Uses <code>loss='quantile', quantile=0.95</code> to predict the value that 95% of data points will likely fall below.</li>
+                        <li><strong>Model 3 (Lower Bound):</strong> Uses <code>loss='quantile', quantile=0.05</code> to predict the value that only 5% of data points will fall below.</li>
+                    </ul>
+                    <p>The area between Model 2 and Model 3 represents our 90% Confidence Interval.</p>
 <pre><code><span class="code-keyword">def</span> train_and_forecast(df):
-    <span class="code-comment"># 1. Main Forecast (Squared Error)</span>
+    <span class="code-comment"># 1. Main Forecast (Squared Error - The dashed line)</span>
     model_resid = HistGradientBoostingRegressor(loss='squared_error')
     model_resid.fit(X_train, y_train)
 
-    <span class="code-comment"># 2. Upper Bound (95th Percentile)</span>
+    <span class="code-comment"># 2. Upper Bound (95th Percentile - Top of cone)</span>
     model_upper = HistGradientBoostingRegressor(loss='quantile', quantile=0.95)
     model_upper.fit(X_train, y_train)
 
-    <span class="code-comment"># 3. Lower Bound (5th Percentile)</span>
+    <span class="code-comment"># 3. Lower Bound (5th Percentile - Bottom of cone)</span>
     model_lower = HistGradientBoostingRegressor(loss='quantile', quantile=0.05)
     model_lower.fit(X_train, y_train)</code></pre>
 
@@ -345,7 +353,8 @@
                         fill: 'tonexty', // Fill area between this trace and the previous one (Upper)
                         fillcolor: hexToRgba(config.color, 0.2), // 20% opacity
                         line: { width: 0 },
-                        showlegend: false,
+                        showlegend: true,  // CHANGED: Now visible in legend
+                        name: 'Confidence Cone (90%)', // CHANGED: Clear label
                         hoverinfo: 'skip'
                     };
 
