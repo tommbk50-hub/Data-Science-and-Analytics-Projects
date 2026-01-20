@@ -14,34 +14,34 @@ METRICS = {
     "positivity": {
         "topic": "Influenza",
         "metric_id": "influenza_testing_positivityByWeek",
-        "name": "Flu: PCR Positivity Rate (%)",
-        "agg": "mean" 
+        "agg": "mean",
+        "name": "Flu: PCR Positivity Rate (%)"
     },
     "hospital": {
         "topic": "Influenza",
         "metric_id": "influenza_healthcare_hospitalAdmissionRateByWeek", 
-        "name": "Flu: Hospital Admission Rate",
-        "agg": "mean"
+        "agg": "mean",
+        "name": "Flu: Hospital Admission Rate"
     },
     "icu": {
         "topic": "Influenza",
         "metric_id": "influenza_healthcare_ICUHDUadmissionRateByWeek",
-        "name": "Flu: ICU/HDU Admission Rate",
-        "agg": "mean"
+        "agg": "mean",
+        "name": "Flu: ICU/HDU Admission Rate"
     },
 
     # --- COVID-19 ---
     "covid_positivity": {
         "topic": "COVID-19",
         "metric_id": "COVID-19_testing_positivity7DayRolling",
-        "name": "COVID: PCR Positivity Rate (%)",
-        "agg": "mean" 
+        "agg": "mean",
+        "name": "COVID: PCR Positivity Rate (%)"
     },
     "covid_hospital": {
         "topic": "COVID-19",
         "metric_id": "COVID-19_healthcare_admissionByDay", 
-        "name": "COVID: Weekly Hospital Admissions",
-        "agg": "sum"
+        "agg": "sum",
+        "name": "COVID: Weekly Hospital Admissions"
     }
 }
 
@@ -95,57 +95,48 @@ def fetch_data(config):
     
     return df
 
-# --- IMPROVED BACKTESTING FUNCTION ---
 def evaluate_accuracy(df, weeks_back=52):
     """
     Simulates the past year week-by-week to test accuracy.
     """
-    # We need enough history to train (at least 20 weeks) + the backtest period
     if len(df) < (weeks_back + 20):
-        print("    Not enough data for full backtest, shortening window...")
         weeks_back = max(1, len(df) - 20)
 
     dates = []
     actuals = []
     predictions = []
 
-    print(f"    Running backtest on last {weeks_back} weeks...")
-
-    # Loop through the past X weeks
     for i in range(weeks_back, 0, -1):
-        # 1. Define the "Current" date in the simulation
         train_end_index = len(df) - i
-        
-        # 2. Split data: Model only sees data BEFORE this date
         train_df = df.iloc[:train_end_index].copy()
         
-        # The target we are trying to predict
         target_date = df.index[train_end_index]
         actual_value = df.iloc[train_end_index]['metric_value']
         
-        # 3. Train Model (Identical logic to main forecast)
+        # 1. Seasonal
         train_df['Week_Number'] = train_df.index.isocalendar().week.astype(int)
         train_df['Month'] = train_df.index.month
-        
         seasonal_feats = ['Week_Number', 'Month']
+        
         model_seasonal = HistGradientBoostingRegressor(categorical_features=[0, 1], random_state=42)
         model_seasonal.fit(train_df[seasonal_feats], train_df['metric_value'])
         
         train_df['Seasonal_Pred'] = model_seasonal.predict(train_df[seasonal_feats])
         train_df['Residual'] = train_df['metric_value'] - train_df['Seasonal_Pred']
         
+        # 2. Residual
         train_df['Res_Lag_1'] = train_df['Residual'].shift(1)
         train_df['Res_Lag_2'] = train_df['Residual'].shift(2)
         train_df['Res_Lag_3'] = train_df['Residual'].shift(3)
         
         df_resid = train_df.dropna()
-        if len(df_resid) < 10: continue # Skip if not enough lag data yet
+        if len(df_resid) < 10: continue
 
         resid_feats = ['Res_Lag_1', 'Res_Lag_2', 'Res_Lag_3', 'Week_Number']
         model_resid = HistGradientBoostingRegressor(random_state=42)
         model_resid.fit(df_resid[resid_feats], df_resid['Residual'])
         
-        # 4. Predict
+        # 3. Predict
         feat_week = target_date.isocalendar().week
         feat_month = target_date.month
         last_residuals = train_df['Residual'].iloc[-3:].tolist()
@@ -159,13 +150,9 @@ def evaluate_accuracy(df, weeks_back=52):
         actuals.append(float(actual_value))
         predictions.append(float(final_pred))
 
-    # Calculate Metrics
     if not actuals: return None
     
     mae = mean_absolute_error(actuals, predictions)
-    
-    # Calculate Mean Absolute Percentage Error (MAPE)
-    # Avoid division by zero
     mape = np.mean(np.abs((np.array(actuals) - np.array(predictions)) / np.maximum(np.array(actuals), 1))) * 100
 
     return {
@@ -177,11 +164,13 @@ def evaluate_accuracy(df, weeks_back=52):
     }
 
 def train_and_forecast(df):
+    # Feature Engineering
     df['Week_Number'] = df.index.isocalendar().week.astype(int)
     df['Month'] = df.index.month
     seasonal_features = ['Week_Number', 'Month']
     
-    model_seasonal = HistGradientBoostingRegressor(categorical_features=[0, 1], random_state=42)
+    # --- MODEL 1: MAIN FORECAST (Mean) ---
+    model_seasonal = HistGradientBoostingRegressor(categorical_features=[0, 1], loss='squared_error', random_state=42)
     model_seasonal.fit(df[seasonal_features], df['metric_value'])
     df['Seasonal_Pred'] = model_seasonal.predict(df[seasonal_features])
     df['Residual'] = df['metric_value'] - df['Seasonal_Pred']
@@ -192,36 +181,66 @@ def train_and_forecast(df):
     df_resid = df.dropna().copy()
     resid_features = ['Res_Lag_1', 'Res_Lag_2', 'Res_Lag_3', 'Week_Number']
     
-    model_resid = HistGradientBoostingRegressor(random_state=42)
+    model_resid = HistGradientBoostingRegressor(loss='squared_error', random_state=42)
     model_resid.fit(df_resid[resid_features], df_resid['Residual'])
 
+    # --- MODEL 2: UPPER BOUND (95th Percentile) ---
+    model_resid_upper = HistGradientBoostingRegressor(loss='quantile', quantile=0.95, random_state=42)
+    model_resid_upper.fit(df_resid[resid_features], df_resid['Residual'])
+
+    # --- MODEL 3: LOWER BOUND (5th Percentile) ---
+    model_resid_lower = HistGradientBoostingRegressor(loss='quantile', quantile=0.05, random_state=42)
+    model_resid_lower.fit(df_resid[resid_features], df_resid['Residual'])
+
+    # FORECAST LOOP
     last_date = df.index[-1]
     history_residuals = df['Residual'].iloc[-3:].tolist()
     current_date = last_date
     future_forecasts = []
 
+    # Bridge point
+    bridge_val = float(df['metric_value'].iloc[-1])
     future_forecasts.append({
         'date': last_date.strftime('%Y-%m-%d'),
         'Seasonal_Base': float(df['Seasonal_Pred'].iloc[-1]),
-        'Final_Forecast': float(df['metric_value'].iloc[-1])
+        'Final_Forecast': bridge_val,
+        'Lower_Bound': bridge_val,
+        'Upper_Bound': bridge_val
     })
 
     for i in range(52):
         current_date = current_date + pd.Timedelta(days=7)
         feat_week = current_date.isocalendar().week
         feat_month = current_date.month
+        
+        # 1. Seasonal Base
         seasonal_base = model_seasonal.predict(pd.DataFrame([[feat_week, feat_month]], columns=seasonal_features))[0]
+        
+        # 2. Residual Forecast (Main)
         res_lag_1 = history_residuals[-1]
         res_lag_2 = history_residuals[-2]
         res_lag_3 = history_residuals[-3]
-        pred_residual = model_resid.predict(pd.DataFrame([[res_lag_1, res_lag_2, res_lag_3, feat_week]], columns=resid_features))[0]
+        
+        lag_features = pd.DataFrame([[res_lag_1, res_lag_2, res_lag_3, feat_week]], columns=resid_features)
+        
+        pred_residual = model_resid.predict(lag_features)[0]
+        pred_residual_upper = model_resid_upper.predict(lag_features)[0]
+        pred_residual_lower = model_resid_lower.predict(lag_features)[0]
+        
+        # 3. Combine
         final_pred = max(0, seasonal_base + pred_residual)
+        upper_bound = max(0, seasonal_base + pred_residual_upper)
+        lower_bound = max(0, seasonal_base + pred_residual_lower)
+
+        # Update lags for next step
         history_residuals.append(pred_residual)
         
         future_forecasts.append({
             'date': current_date.strftime('%Y-%m-%d'),
             'Seasonal_Base': float(seasonal_base),
-            'Final_Forecast': float(final_pred)
+            'Final_Forecast': float(final_pred),
+            'Lower_Bound': float(lower_bound),
+            'Upper_Bound': float(upper_bound)
         })
         
     return future_forecasts
@@ -230,7 +249,7 @@ def train_and_forecast(df):
 # MAIN EXECUTION
 # -------------------------------------------------------
 full_dashboard_data = {}
-print("Starting Multi-Virus Forecast Job...")
+print("Starting Multi-Virus Forecast Job (With Intervals)...")
 
 for key, config in METRICS.items():
     print(f"\nProcessing: {config['name']}")
@@ -241,11 +260,10 @@ for key, config in METRICS.items():
              print("  Skipping (Not enough data points).")
              continue
         
-        # 1. Generate Future Forecast
+        # 1. Generate Future Forecast (Now includes Intervals)
         forecasts = train_and_forecast(df)
         
-        # 2. Evaluate Past Accuracy (52-Week Backtest)
-        # This simulates predicting every single week of the past year.
+        # 2. Evaluate Past Accuracy
         accuracy_data = evaluate_accuracy(df, weeks_back=52)
 
         full_dashboard_data[key] = {
@@ -257,7 +275,9 @@ for key, config in METRICS.items():
             "forecast": {
                 "dates": [x['date'] for x in forecasts],
                 "values": [x['Final_Forecast'] for x in forecasts],
-                "baseline": [x['Seasonal_Base'] for x in forecasts]
+                "baseline": [x['Seasonal_Base'] for x in forecasts],
+                "lower": [x['Lower_Bound'] for x in forecasts],
+                "upper": [x['Upper_Bound'] for x in forecasts]
             },
             "accuracy": accuracy_data
         }
@@ -267,4 +287,4 @@ for key, config in METRICS.items():
 with open('dashboard_data.json', 'w') as f:
     json.dump(full_dashboard_data, f)
 
-print("\nSuccess: 'dashboard_data.json' updated.")
+print("\nSuccess: 'dashboard_data.json' updated with Intervals.")
