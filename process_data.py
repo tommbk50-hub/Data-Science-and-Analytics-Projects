@@ -29,7 +29,7 @@ METRICS = {
         "agg": "mean"
     },
 
-    # --- COVID-19 (Verified Headline Metrics) ---
+    # --- COVID-19 (Daily Data -> Resampled to Weekly) ---
     "covid_positivity": {
         "topic": "COVID-19",
         "metric_id": "COVID-19_testing_positivity7DayRolling",
@@ -38,17 +38,17 @@ METRICS = {
     },
     "covid_hospital": {
         "topic": "COVID-19",
-        # FIXED: Using the Headline metric which is guaranteed to exist
-        "metric_id": "COVID-19_headline_7DayAdmissions", 
+        "metric_id": "COVID-19_healthcare_admissionByDay", 
         "name": "COVID: Weekly Hospital Admissions",
-        "agg": "sum" 
-    },
-    "covid_deaths": {
-        "topic": "COVID-19",
-        # FIXED: Using the Headline ONS metric
-        "metric_id": "COVID-19_headline_ONSdeaths_7DayTotals",
-        "name": "COVID: Weekly Deaths (ONS)",
         "agg": "sum"
+    },
+    # --- REPLACEMENT METRIC ---
+    "covid_cases": {
+        "topic": "COVID-19",
+        # GUARANTEED METRIC: Daily Case Counts
+        "metric_id": "COVID-19_cases_casesByDay",
+        "name": "COVID: Weekly Confirmed Cases",
+        "agg": "sum" # We sum daily cases to get the weekly total
     }
 }
 
@@ -92,9 +92,7 @@ def fetch_data(config):
     df.sort_values('date', inplace=True)
     df.set_index('date', inplace=True)
     
-    # Resample to Weekly (Ending Sunday)
-    # Even though Headline metrics are already weekly, resampling ensures 
-    # the dates align perfectly with the Influenza data for the charts.
+    # Resample Daily -> Weekly (Ending Sunday)
     if config['agg'] == 'sum':
         df = df.resample('W-SUN')['metric_value'].sum().to_frame()
     else:
