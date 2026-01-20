@@ -29,7 +29,7 @@ METRICS = {
         "agg": "mean"
     },
 
-    # --- COVID-19 (Daily Data -> Resampled to Weekly) ---
+    # --- COVID-19 (Verified Headline Metrics) ---
     "covid_positivity": {
         "topic": "COVID-19",
         "metric_id": "COVID-19_testing_positivity7DayRolling",
@@ -38,15 +38,15 @@ METRICS = {
     },
     "covid_hospital": {
         "topic": "COVID-19",
-        # CORRECT ID: Daily Admission Count
-        "metric_id": "COVID-19_healthcare_admissionByDay", 
+        # FIXED: Using the Headline metric which is guaranteed to exist
+        "metric_id": "COVID-19_headline_7DayAdmissions", 
         "name": "COVID: Weekly Hospital Admissions",
-        "agg": "sum"
+        "agg": "sum" 
     },
     "covid_deaths": {
         "topic": "COVID-19",
-        # CORRECT ID: Daily ONS Deaths
-        "metric_id": "COVID-19_deaths_ONSByDay",
+        # FIXED: Using the Headline ONS metric
+        "metric_id": "COVID-19_headline_ONSdeaths_7DayTotals",
         "name": "COVID: Weekly Deaths (ONS)",
         "agg": "sum"
     }
@@ -83,7 +83,7 @@ def fetch_data(config):
     df = df[['date', 'metric_value']].copy()
     df['date'] = pd.to_datetime(df['date'])
     
-    # Clean duplicates
+    # Clean duplicates: Group by date first
     if config['agg'] == 'sum':
         df = df.groupby('date')['metric_value'].sum().reset_index()
     else:
@@ -92,12 +92,15 @@ def fetch_data(config):
     df.sort_values('date', inplace=True)
     df.set_index('date', inplace=True)
     
-    # Resample Daily -> Weekly
+    # Resample to Weekly (Ending Sunday)
+    # Even though Headline metrics are already weekly, resampling ensures 
+    # the dates align perfectly with the Influenza data for the charts.
     if config['agg'] == 'sum':
         df = df.resample('W-SUN')['metric_value'].sum().to_frame()
     else:
         df = df.resample('W-SUN')['metric_value'].mean().to_frame()
     
+    # Remove 0 artifacts
     df = df[df['metric_value'] > 0].copy()
     
     return df
