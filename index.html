@@ -128,6 +128,13 @@
                     <hr class="my-4">
 
                     <h5>1. Histogram-Based Gradient Boosting (HGBR)</h5>
+                    
+                    <p>
+                        Histogram-Based Gradient Boosting is a sophisticated supervised machine learning algorithm designed to solve complex regression problems efficiently. It is an optimised evolution of traditional Gradient Boosting that groups continuous data into discrete 'bins' (histograms) rather than analysing every individual data point. This binning process significantly accelerates the training phase, making the model exceptionally capable of handling large-scale datasets without sacrificing accuracy. By constructing an ensemble of decision trees where each new tree attempts to correct the errors of its predecessors, the algorithm effectively captures intricate, non-linear patterns within the data.
+                    </p>
+                    <p>
+                        When applied to forecasting future trends, such as predicting flu outbreaks, the model uses a technique often called a 'sliding window' to interpret time-series data. Rather than simply reading dates, it utilises historical figures—such as infection rates from previous weeks—as input features to predict future values. Its major advantage is the ability to combine these historical lag features with external variables, such as seasonal weather changes or school term dates. This holistic approach allows the model to anticipate future surges in cases based on complex combinations of past behaviours, enabling more proactive planning and resource allocation.
+                    </p>
                     <p>
                         The <code>HistGradientBoostingRegressor</code> is an implementation of Gradient Boosted Decision Trees (GBDT), inspired by LightGBM. It is significantly faster than traditional GBDT for large datasets because it uses <strong>histogram binning</strong>.
                     </p>
@@ -226,7 +233,7 @@
                         line: { color: config.color, width: 3, dash: 'dash' }
                     };
 
-                    // 3. History (Solid Line) - REVERTED TO CLEAN LINES
+                    // 3. History (Solid Line) - CLEAN LINES (No dots)
                     const traceHistory = {
                         x: history.dates,
                         y: history.values,
