@@ -26,7 +26,7 @@ METRICS = {
         "name": "Flu: ICU/HDU Admission Rate"
     },
 
-    # --- COVID-19 METRICS (UPDATED IDs) ---
+    # --- COVID-19 METRICS (VERIFIED IDs) ---
     "covid_positivity": {
         "topic": "COVID-19",
         "metric_id": "COVID-19_testing_positivity7DayRolling",
@@ -34,15 +34,15 @@ METRICS = {
     },
     "covid_hospital": {
         "topic": "COVID-19",
-        # FIXED: Switched to the 'Headline' metric for weekly admissions
-        "metric_id": "COVID-19_headline_7DayAdmissions",
-        "name": "COVID: Weekly Hospital Admissions"
+        # FIXED: Uses 'admissionByDay' (Daily count) as RateByWeek does not exist for COVID
+        "metric_id": "COVID-19_healthcare_admissionByDay",
+        "name": "COVID: Hospital Admissions (Daily)"
     },
     "covid_deaths": {
         "topic": "COVID-19",
-        # FIXED: Switched to the 'Headline' metric for weekly ONS deaths
-        "metric_id": "COVID-19_headline_ONSdeaths_7DayTotals",
-        "name": "COVID: Weekly Deaths (ONS)"
+        # FIXED: Removed 'Registered' from the ID
+        "metric_id": "COVID-19_deaths_ONSByWeek",
+        "name": "COVID: Deaths (ONS Weekly)"
     }
 }
 
