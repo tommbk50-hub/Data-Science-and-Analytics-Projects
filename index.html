@@ -331,14 +331,42 @@
     "hospital": { "topic": "Influenza", "metric_id": "influenza_healthcare_hospitalAdmissionRateByWeek" }
 }</code></pre>
 
-                    <h6 class="mt-4"><strong>B. Generating Prediction Intervals (Quantile Regression)</strong></h6>
-<pre><code><span class="code-keyword">def</span> train_and_forecast(df):
-    <span class="code-comment"># 1. Main Forecast</span>
-    model_resid = HistGradientBoostingRegressor(loss='squared_error')
-    <span class="code-comment"># 2. Upper Bound (95th Percentile)</span>
-    model_upper = HistGradientBoostingRegressor(loss='quantile', quantile=0.95)
-    <span class="code-comment"># 3. Lower Bound (5th Percentile)</span>
-    model_lower = HistGradientBoostingRegressor(loss='quantile', quantile=0.05)</code></pre>
+                    <h6 class="mt-4"><strong>B. Scikit-Learn HGBR Configuration</strong></h6>
+                    <p>We leverage <code>HistGradientBoostingRegressor</code> due to its speed and native support for missing values (NaNs). We define three distinct model configurations to handle the point forecast (Mean) and uncertainty bounds (Quantiles).</p>
+<pre><code><span class="code-keyword">from</span> sklearn.ensemble <span class="code-keyword">import</span> HistGradientBoostingRegressor
+
+<span class="code-keyword">def</span> train_and_forecast(df):
+    <span class="code-comment"># 1. Main Forecast Model (The Dashed Line)</span>
+    <span class="code-comment"># Uses 'squared_error' (Least Squares) to predict the expected mean value.</span>
+    model_resid = HistGradientBoostingRegressor(
+        loss=<span class="code-string">'squared_error'</span>,
+        learning_rate=0.1,
+        max_iter=100,
+        random_state=42
+    )
+
+    <span class="code-comment"># 2. Upper Bound Model (Top of the Cone)</span>
+    <span class="code-comment"># Uses 'quantile' loss targeting the 95th percentile.</span>
+    <span class="code-comment"># This predicts a value that 95% of future data points should fall below.</span>
+    model_upper = HistGradientBoostingRegressor(
+        loss=<span class="code-string">'quantile'</span>,
+        quantile=0.95,
+        random_state=42
+    )
+
+    <span class="code-comment"># 3. Lower Bound Model (Bottom of the Cone)</span>
+    <span class="code-comment"># Uses 'quantile' loss targeting the 5th percentile.</span>
+    <span class="code-comment"># This predicts a value that only 5% of future data points should fall below.</span>
+    model_lower = HistGradientBoostingRegressor(
+        loss=<span class="code-string">'quantile'</span>,
+        quantile=0.05,
+        random_state=42
+    )
+    
+    <span class="code-comment"># Fit all three models on the same training data (X_train, y_train)</span>
+    model_resid.fit(X_train, y_train)
+    model_upper.fit(X_train, y_train)
+    model_lower.fit(X_train, y_train)</code></pre>
 
                     <h6 class="mt-4"><strong>C. Explainable AI (Permutation Importance)</strong></h6>
 <pre><code><span class="code-keyword">from</span> sklearn.inspection <span class="code-keyword">import</span> permutation_importance
