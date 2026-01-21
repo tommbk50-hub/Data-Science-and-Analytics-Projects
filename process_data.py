@@ -5,6 +5,7 @@ import requests
 import time
 from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.metrics import mean_absolute_error
+from sklearn.inspection import permutation_importance # NEW IMPORT
 
 # -------------------------------------------------------
 # CONFIGURATION
@@ -184,6 +185,18 @@ def train_and_forecast(df):
     model_resid = HistGradientBoostingRegressor(loss='squared_error', random_state=42)
     model_resid.fit(df_resid[resid_features], df_resid['Residual'])
 
+    # --- FEATURE IMPORTANCE (New) ---
+    # We analyze the Residual Model to see what drives the deviations from the seasonal norm
+    perm_importance = permutation_importance(model_resid, df_resid[resid_features], df_resid['Residual'], n_repeats=10, random_state=42)
+    
+    # Create readable list
+    feature_names = ['Last Week (Lag 1)', '2 Weeks Ago (Lag 2)', '3 Weeks Ago (Lag 3)', 'Seasonal Offset (Week)']
+    importance_scores = perm_importance.importances_mean.tolist()
+    
+    # Pair and sort
+    importance_list = [{"name": n, "score": s} for n, s in zip(feature_names, importance_scores)]
+    importance_list.sort(key=lambda x: x['score'], reverse=True)
+
     # --- MODEL 2: UPPER BOUND (95th Percentile) ---
     model_resid_upper = HistGradientBoostingRegressor(loss='quantile', quantile=0.95, random_state=42)
     model_resid_upper.fit(df_resid[resid_features], df_resid['Residual'])
@@ -198,7 +211,6 @@ def train_and_forecast(df):
     current_date = last_date
     future_forecasts = []
 
-    # Bridge point
     bridge_val = float(df['metric_value'].iloc[-1])
     future_forecasts.append({
         'date': last_date.strftime('%Y-%m-%d'),
@@ -213,10 +225,8 @@ def train_and_forecast(df):
         feat_week = current_date.isocalendar().week
         feat_month = current_date.month
         
-        # 1. Seasonal Base
         seasonal_base = model_seasonal.predict(pd.DataFrame([[feat_week, feat_month]], columns=seasonal_features))[0]
         
-        # 2. Residual Forecast (Main)
         res_lag_1 = history_residuals[-1]
         res_lag_2 = history_residuals[-2]
         res_lag_3 = history_residuals[-3]
@@ -227,12 +237,10 @@ def train_and_forecast(df):
         pred_residual_upper = model_resid_upper.predict(lag_features)[0]
         pred_residual_lower = model_resid_lower.predict(lag_features)[0]
         
-        # 3. Combine
         final_pred = max(0, seasonal_base + pred_residual)
         upper_bound = max(0, seasonal_base + pred_residual_upper)
         lower_bound = max(0, seasonal_base + pred_residual_lower)
 
-        # Update lags for next step
         history_residuals.append(pred_residual)
         
         future_forecasts.append({
@@ -243,13 +251,13 @@ def train_and_forecast(df):
             'Upper_Bound': float(upper_bound)
         })
         
-    return future_forecasts
+    return future_forecasts, importance_list
 
 # -------------------------------------------------------
 # MAIN EXECUTION
 # -------------------------------------------------------
 full_dashboard_data = {}
-print("Starting Multi-Virus Forecast Job (With Intervals)...")
+print("Starting Multi-Virus Forecast Job...")
 
 for key, config in METRICS.items():
     print(f"\nProcessing: {config['name']}")
@@ -260,8 +268,8 @@ for key, config in METRICS.items():
              print("  Skipping (Not enough data points).")
              continue
         
-        # 1. Generate Future Forecast (Now includes Intervals)
-        forecasts = train_and_forecast(df)
+        # 1. Generate Future Forecast & Get Importances
+        forecasts, importances = train_and_forecast(df)
         
         # 2. Evaluate Past Accuracy
         accuracy_data = evaluate_accuracy(df, weeks_back=52)
@@ -279,7 +287,8 @@ for key, config in METRICS.items():
                 "lower": [x['Lower_Bound'] for x in forecasts],
                 "upper": [x['Upper_Bound'] for x in forecasts]
             },
-            "accuracy": accuracy_data
+            "accuracy": accuracy_data,
+            "importance": importances # SAVE THIS TO JSON
         }
     else:
         print("  Skipping (No data found).")
@@ -287,4 +296,4 @@ for key, config in METRICS.items():
 with open('dashboard_data.json', 'w') as f:
     json.dump(full_dashboard_data, f)
 
-print("\nSuccess: 'dashboard_data.json' updated with Intervals.")
+print("\nSuccess: 'dashboard_data.json' updated with Feature Importance.")
