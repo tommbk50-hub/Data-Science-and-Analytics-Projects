@@ -27,6 +27,7 @@
         .covid-header { border-left-color: #6610f2; }
         .accuracy-header { border-left-color: #198754; }
         .importance-header { border-left-color: #fd7e14; }
+        .residuals-header { border-left-color: #6c757d; }
         
         .description-text { font-size: 1rem; line-height: 1.6; color: #495057; }
         .description-text a { text-decoration: none; font-weight: 500; }
@@ -75,7 +76,7 @@
 
                 <div class="description-text">
                     <p>
-                        This dashboard provides a comprehensive 52-week forecast for <strong>Influenza (Flu)</strong> and <strong>COVID-19</strong> in England. By analysing trends in PCR Positivity and Hospital Admissions, these models aim to support healthcare resource planning—helping hospitals and A&E departments anticipate potential winter surges.
+                        This dashboard provides a comprehensive 52-week forecast for <strong>Influenza (Flu)</strong> and <strong>COVID-19</strong> in England. By analysing trends in PCR Positivity and Hospital Admissions, these models aim to support healthcare resource planning.
                     </p>
                     <p>
                         The predictions are generated using a <strong>Hybrid Machine Learning strategy</strong> (<a href="https://scikit-learn.org/stable/modules/ensemble.html#histogram-based-gradient-boosting" target="_blank">HistGradientBoostingRegressor</a>). The system is fully automated: it retrieves live data directly from the UKHSA public API and retrains all models every week via GitHub Actions.
@@ -101,24 +102,36 @@
         </div>
 
         <div class="row">
-            <div class="col-lg-6">
+            <div class="col-lg-4">
                 <h3 class="section-header accuracy-header mt-0"><i class="fas fa-bullseye me-2 text-success"></i>Model Accuracy</h3>
                 <div class="card p-4 h-100">
                     <p class="small text-muted mb-2">
-                        <strong>52-Week Rolling Backtest:</strong> This chart compares the model's past predictions (green dotted line) against actual reported data (black line).
+                        <strong>52-Week Rolling Backtest:</strong> Compares predictions (green dotted) vs actuals (black).
                     </p>
                     <div id="chart-accuracy" class="accuracy-container"></div>
                 </div>
             </div>
 
-            <div class="col-lg-6">
+            <div class="col-lg-4">
                 <h3 class="section-header importance-header mt-0"><i class="fas fa-lightbulb me-2 text-warning"></i>Explainable AI</h3>
                 <div class="card p-4 h-100">
                     <p class="small text-muted mb-2">
-                        <strong>Feature Importance:</strong> Which variables drive the model's decisions? We use Permutation Importance to score features. High scores indicate the model relies heavily on that data point.
+                        <strong>Feature Importance:</strong> Which variables drive decisions? "Lag 1" is typically the primary driver.
                     </p>
                     <div id="chart-importance" class="accuracy-container">
-                        <div class="loading-msg">Waiting for data update...</div>
+                        <div class="loading-msg">Waiting for data...</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-4">
+                <h3 class="section-header residuals-header mt-0"><i class="fas fa-stethoscope me-2 text-secondary"></i>Diagnostics</h3>
+                <div class="card p-4 h-100">
+                    <p class="small text-muted mb-2">
+                        <strong>Residuals Histogram:</strong> Shows the distribution of errors. A "Bell Curve" centered on 0 indicates a healthy, unbiased model.
+                    </p>
+                    <div id="chart-residuals" class="accuracy-container">
+                        <div class="loading-msg">Waiting for data...</div>
                     </div>
                 </div>
             </div>
@@ -135,10 +148,7 @@
 
                     <h5>1. Histogram-Based Gradient Boosting (HGBR)</h5>
                     <p>
-                        Histogram-Based Gradient Boosting is a sophisticated supervised machine learning algorithm designed to solve complex regression problems efficiently. It is an optimised evolution of traditional Gradient Boosting that groups continuous data into discrete 'bins' (histograms) rather than analysing every individual data point. This binning process significantly accelerates the training phase, making the model exceptionally capable of handling large-scale datasets without sacrificing accuracy.
-                    </p>
-                    <p>
-                        When applied to forecasting future trends, such as predicting flu outbreaks, the model uses a technique often called a 'sliding window' to interpret time-series data. Rather than simply reading dates, it utilises historical figures—such as infection rates from previous weeks—as input features to predict future values. Its major advantage is the ability to combine these historical lag features with external variables, such as seasonal weather changes or school term dates. This holistic approach allows the model to anticipate future surges in cases based on complex combinations of past behaviours, enabling more proactive planning and resource allocation.
+                        Histogram-Based Gradient Boosting is a sophisticated supervised machine learning algorithm designed to solve complex regression problems efficiently. It is an optimised evolution of traditional Gradient Boosting that groups continuous data into discrete 'bins' (histograms) rather than analysing every individual data point.
                     </p>
                     
                     <div class="row">
@@ -184,9 +194,6 @@
                     <p>
                         To demystify the "Black Box" nature of machine learning, we employ a technique called **Permutation Importance**. This evaluates the significance of each input feature (e.g., "Last Week's Cases" vs. "Seasonal Month") by randomly shuffling its values and measuring the resulting drop in model accuracy.
                     </p>
-                    <p>
-                        If shuffling a specific feature causes the model's error to spike, that feature is considered highly important. This validates that the model is making decisions based on reactive trends (Lag features) rather than just guessing based on the time of year.
-                    </p>
 
                     <hr class="my-4">
 
@@ -209,7 +216,6 @@
     model_lower = HistGradientBoostingRegressor(loss='quantile', quantile=0.05)</code></pre>
 
                     <h6 class="mt-4"><strong>C. Explainable AI (Permutation Importance)</strong></h6>
-                    <p>We use Scikit-Learn's inspection module to calculate importance scores on the hold-out residuals.</p>
 <pre><code><span class="code-keyword">from</span> sklearn.inspection <span class="code-keyword">import</span> permutation_importance
 
 <span class="code-comment"># Calculate importance on the Residual Model</span>
@@ -309,7 +315,6 @@ importance_scores = result.importances_mean</code></pre>
                 if (accuracyData) {
                     const traceActuals = { x: accuracyData.dates, y: accuracyData.actuals, type: 'scatter', mode: 'lines', name: 'Actual Reported', line: { color: '#212529', width: 2 } };
                     const tracePreds = { x: accuracyData.dates, y: accuracyData.predictions, type: 'scatter', mode: 'lines', name: 'Model Prediction', line: { color: '#198754', width: 2, dash: 'dot' } };
-                    
                     const layoutAcc = {
                         title: { text: `Backtest Accuracy: ${accuracyData.mape.toFixed(1)}% Error (Past 52 Weeks)`, font: { size: 14 } },
                         font: { family: 'Roboto, sans-serif' },
@@ -319,9 +324,27 @@ importance_scores = result.importances_mean</code></pre>
                         paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)'
                     };
                     Plotly.newPlot('chart-accuracy', [traceActuals, tracePreds], layoutAcc);
+
+                    // 3. RENDER RESIDUALS CHART (NEW)
+                    if (accuracyData.residuals) {
+                        const traceResid = {
+                            x: accuracyData.residuals,
+                            type: 'histogram',
+                            marker: { color: '#6c757d' }
+                        };
+                        const layoutResid = {
+                            title: { text: "Error Distribution (Bias Check)", font: { size: 14 } },
+                            font: { family: 'Roboto, sans-serif' },
+                            margin: { t: 40, b: 40, l: 50, r: 20 },
+                            xaxis: { title: 'Prediction Error (Actual - Predicted)' },
+                            yaxis: { title: 'Count' },
+                            paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)'
+                        };
+                        Plotly.newPlot('chart-residuals', [traceResid], layoutResid);
+                    }
                 }
 
-                // 3. RENDER IMPORTANCE CHART
+                // 4. RENDER IMPORTANCE CHART
                 const importanceData = data['hospital'].importance;
                 if (importanceData) {
                     const traceImp = {
