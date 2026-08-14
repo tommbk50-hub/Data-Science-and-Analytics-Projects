@@ -597,6 +597,7 @@
                         <div class="metric-subtitle">Actual vs Predicted (Past 52 Weeks)</div>
                     </div>
                     <div class="card-body">
+                        <p class="metric-subtitle mb-3">This chart looks back over the past year and places the model's past predictions next to what actually happened. It works by asking the model to "predict the past" using only the information it would have had at the time, so we can check its answers against reality. This matters because it shows how much we can trust the model's future forecasts &ndash; the closer the two lines sit together, the more confident we can be that its predictions of respiratory illness cases are reliable.</p>
                         <div id="chart-accuracy" class="accuracy-container"></div>
                     </div>
                 </div>
@@ -609,6 +610,7 @@
                         <div class="metric-subtitle">Feature Importance Drivers</div>
                     </div>
                     <div class="card-body">
+                        <p class="metric-subtitle mb-3">Rather than being a "black box", the model can tell us which pieces of information influenced its forecast the most &ndash; for example recent case numbers, the time of year, or hospital admission trends. This chart ranks those drivers so the biggest influences appear at the top. This is important because it lets us sanity-check that the model is basing its predictions on sensible, real-world factors, which builds trust in the forecasts and helps public health teams understand what is driving changes in respiratory illness.</p>
                         <div id="chart-importance" class="accuracy-container">
                             <div class="loading-msg">Waiting for data...</div>
                         </div>
@@ -623,6 +625,7 @@
                         <div class="metric-subtitle">Residual Distribution (Bell Curve = Good)</div>
                     </div>
                     <div class="card-body">
+                        <p class="metric-subtitle mb-3">Every forecast has some error &ndash; the gap between what was predicted and what actually occurred. This chart plots all of those gaps together to reveal any consistent lean, such as the model regularly guessing too high or too low. Ideally the errors form a balanced bell curve centred on zero, meaning mistakes are small, random and cancel each other out. This is important because a model that consistently over- or under-predicts could mislead planning, so checking for balance helps ensure the respiratory illness forecasts are fair and dependable.</p>
                         <div id="chart-residuals" class="accuracy-container">
                             <div class="loading-msg">Waiting for data...</div>
                         </div>
