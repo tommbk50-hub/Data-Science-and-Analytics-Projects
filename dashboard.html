@@ -495,10 +495,10 @@
         <canvas id="neural-net-canvas" class="hero-canvas" aria-hidden="true"></canvas>
         <div class="container">
             <span class="hero-eyebrow"><i class="fas fa-wave-square"></i> UKHSA-Powered Forecasting</span>
-            <h1>UK Respiratory Illness <span class="accent">Case Predictions</span> using Machine Learning</h1>
+            <h1>UK Respiratory Illness <span class="accent">Forecast Dashboard</span> </h1>
             <p class="lead-copy">
-                Machine learning powered 52-week forecasts for Influenza and COVID-19 in England,
-                built on live surveillance data from the UK Health Security Agency.
+                A machine-learning powered 52-week forecast for Influenza and COVID-19 outbreaks in England,
+                built on live surveillance data from the UK Health Security Agency (UKHSA) API.
             </p>
             <div class="cta-group">
                 <a href="#live-dashboard" class="btn btn-primary-teal">
@@ -523,10 +523,10 @@
 
                 <div class="description-text">
                     <p>
-                        This dashboard provides a comprehensive 52-week forecast for <strong>Influenza</strong> and <strong>COVID-19</strong>. By analysing trends in PCR Positivity, Hospital Admissions, and ICU usage, these models support healthcare resource planning and early warning systems.
+                        This live interactive dashboard provides a comprehensive 52-week forecast for <strong>Influenza</strong> and <strong>COVID-19</strong> for healthcare professionals and the general public. By analysing trends in PCR test positivity, hospital admissions, and intensive care unit (ICU) occupancy, this dashboard acts as an early warning system to support healthcare professionals and local authorities with hospital, GP, pharmacy and other resource planning. E.g. planning vaccination timelines, increasing ward occupancy, etc. 
                     </p>
                     <p>
-                        The predictions are generated using a <strong>Hybrid Machine Learning strategy</strong> (<a href="https://scikit-learn.org/stable/modules/ensemble.html#histogram-based-gradient-boosting" target="_blank">HistGradientBoostingRegressor</a>). The system is fully automated: it retrieves live data directly from the UKHSA public API and retrains every week via GitHub Actions.
+                        The predictions are generated using a <strong>hybrid machine learning strategy</strong> (<a href="https://scikit-learn.org/stable/modules/ensemble.html#histogram-based-gradient-boosting" target="_blank">HistGradientBoostingRegressor</a>). The system is built to update automatically on a weekly basis, retrieving live data directly from the UK Health Security Agency's (UKHSA) public API. To maintain accurate predictions, the ML model retrains every week via GitHub Actions, comparing its previous predictions with actual reports to iteratively improve itself.
                     </p>
                     <p class="small text-muted mt-3">
                         <i class="fas fa-clock me-1"></i> Last updated: <span id="last-updated" class="fw-bold">...</span> • Data reflects specimen dates.
