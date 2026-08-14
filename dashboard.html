@@ -1015,10 +1015,30 @@ importance_scores = result.importances_mean</code></pre>
                 try {
                     const traceActuals = { x: accuracyData.dates, y: accuracyData.actuals, type: 'scatter', mode: 'lines', name: 'Actual', line: { color: '#0f172a', width: 2 } };
                     const tracePreds = { x: accuracyData.dates, y: accuracyData.predictions, type: 'scatter', mode: 'lines', name: 'Model', line: { color: '#10b981', width: 2, dash: 'dot' } };
+                    // Compute backtest accuracy as 100% - mean absolute percentage error (MAPE)
+                    let accuracyLabel = '';
+                    try {
+                        const actuals = accuracyData.actuals || [];
+                        const preds = accuracyData.predictions || [];
+                        let sumPctErr = 0, n = 0;
+                        for (let i = 0; i < Math.min(actuals.length, preds.length); i++) {
+                            const a = actuals[i], p = preds[i];
+                            if (typeof a === 'number' && typeof p === 'number' && a !== 0) {
+                                sumPctErr += Math.abs((a - p) / a);
+                                n++;
+                            }
+                        }
+                        if (n > 0) {
+                            const accuracyPct = Math.max(0, (1 - sumPctErr / n) * 100);
+                            accuracyLabel = accuracyPct.toFixed(1) + '% accuracy';
+                        }
+                    } catch (mapeErr) { console.error('Error computing accuracy:', mapeErr); }
                     const layoutAcc = {
                         font: { family: 'Inter, sans-serif' },
-                        margin: { t: 20, b: 30, l: 40, r: 20 },
-                        xaxis: { showgrid: false }, yaxis: { showgrid: true, gridcolor: '#f1f5f9' },
+                        margin: { t: 20, b: 50, l: 60, r: 20 },
+                        title: accuracyLabel ? { text: accuracyLabel, font: { size: 14, color: '#0f172a' }, x: 0.5, xanchor: 'center', y: 0.98 } : undefined,
+                        xaxis: { title: 'Date', showgrid: false },
+                        yaxis: { title: 'Respiratory illness cases (count)', showgrid: true, gridcolor: '#f1f5f9' },
                         showlegend: true, legend: { orientation: 'h', y: 1.1 },
                         paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)'
                     };
@@ -1026,14 +1046,46 @@ importance_scores = result.importances_mean</code></pre>
 
                     // 3. RESIDUALS
                     if (accuracyData.residuals) {
-                        const traceResid = { x: accuracyData.residuals, type: 'histogram', marker: { color: '#64748b' } };
+                        const residuals = accuracyData.residuals;
+                        const traceResid = { x: residuals, type: 'histogram', name: 'Errors', marker: { color: '#64748b' } };
+
+                        // Overlay a dashed normal (bell) curve scaled to the histogram counts
+                        const bellTraces = [];
+                        try {
+                            const nums = residuals.filter(v => typeof v === 'number');
+                            if (nums.length > 1) {
+                                const mean = nums.reduce((s, v) => s + v, 0) / nums.length;
+                                const variance = nums.reduce((s, v) => s + (v - mean) * (v - mean), 0) / nums.length;
+                                const std = Math.sqrt(variance);
+                                if (std > 0) {
+                                    const minV = Math.min(...nums), maxV = Math.max(...nums);
+                                    const binCount = Math.ceil(Math.sqrt(nums.length)) || 1;
+                                    const binWidth = (maxV - minV) / binCount || 1;
+                                    const steps = 100;
+                                    const bellX = [], bellY = [];
+                                    for (let i = 0; i <= steps; i++) {
+                                        const xv = minV + (maxV - minV) * (i / steps);
+                                        const density = Math.exp(-((xv - mean) * (xv - mean)) / (2 * variance)) / (std * Math.sqrt(2 * Math.PI));
+                                        bellX.push(xv);
+                                        bellY.push(density * nums.length * binWidth);
+                                    }
+                                    bellTraces.push({
+                                        x: bellX, y: bellY, type: 'scatter', mode: 'lines', name: 'Bell curve',
+                                        line: { color: '#ef4444', width: 2, dash: 'dash' }
+                                    });
+                                }
+                            }
+                        } catch (bellErr) { console.error('Error computing bell curve:', bellErr); }
+
                         const layoutResid = {
                             font: { family: 'Inter, sans-serif' },
-                            margin: { t: 20, b: 30, l: 40, r: 20 },
-                            xaxis: { title: 'Error Value' }, yaxis: { showgrid: true, gridcolor: '#f1f5f9' },
+                            margin: { t: 20, b: 50, l: 60, r: 20 },
+                            xaxis: { title: 'Error value (predicted \u2212 actual)' },
+                            yaxis: { title: 'Frequency (number of weeks)', showgrid: true, gridcolor: '#f1f5f9' },
+                            showlegend: true, legend: { orientation: 'h', y: 1.1 },
                             paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)'
                         };
-                        Plotly.newPlot('chart-residuals', [traceResid], layoutResid, PLOTLY_CONFIG);
+                        Plotly.newPlot('chart-residuals', [traceResid].concat(bellTraces), layoutResid, PLOTLY_CONFIG);
                     } else {
                         document.getElementById('chart-residuals').innerHTML = `<div class="loading-msg text-warning"><i class="fas fa-exclamation-triangle me-2"></i>Residual data not available</div>`;
                     }
@@ -1057,8 +1109,9 @@ importance_scores = result.importances_mean</code></pre>
                     };
                     const layoutImp = {
                         font: { family: 'Inter, sans-serif' },
-                        margin: { t: 20, b: 30, l: 140, r: 20 },
-                        xaxis: { showgrid: true, gridcolor: '#f1f5f9' },
+                        margin: { t: 20, b: 50, l: 140, r: 20 },
+                        xaxis: { title: 'Importance (relative influence on forecast)', showgrid: true, gridcolor: '#f1f5f9' },
+                        yaxis: { title: 'Feature' },
                         paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)'
                     };
                     Plotly.newPlot('chart-importance', [traceImp], layoutImp, PLOTLY_CONFIG);
