@@ -48,12 +48,6 @@ METRICS = {
 
 API_TEMPLATE = "https://api.ukhsa-dashboard.data.gov.uk/themes/infectious_disease/sub_themes/respiratory/topics/{topic}/geography_types/Nation/geographies/England/metrics/{metric_id}"
 
-TRUST_METRIC_URL = (
-    "https://api.ukhsa-dashboard.data.gov.uk/themes/infectious_disease/sub_themes/respiratory"
-    "/topics/COVID-19/geography_types/NHS_Trust/geographies/{geography}"
-    "/metrics/COVID-19_healthcare_admissionByDay"
-)
-
 # Lightweight coordinate lookup for major NHS Trusts. Trusts that are not listed here
 # are simply omitted from the map rather than treated as an error.
 TRUST_COORDS = {
@@ -90,35 +84,60 @@ TRUST_COORDS = {
 }
 
 def fetch_trust_map_data(days=7):
-    """Fetch COVID-19 hospital admissions per NHS Trust for the bubble map.
-
-    Returns a list of {trust, lat, lon, admissions, date} dicts, or an empty list if
-    nothing could be retrieved. Individual Trust failures are skipped so a single
-    timeout cannot lose the whole map.
-    """
+    """Fetch COVID-19 hospital admissions per NHS Trust for the bubble map."""
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
         'Accept': 'application/json'
     }
 
-    retry = Retry(total=2, backoff_factor=2, status_forcelist=[429, 500, 502, 503, 504])
+    retry = Retry(total=2, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504])
     adapter = HTTPAdapter(max_retries=retry)
     session = requests.Session()
-    session.mount('http://', adapter)
     session.mount('https://', adapter)
+
+    # 1. Discover exact geography names and the correct geography_type slug
+    valid_geographies = []
+    correct_geo_type = "NHS_Trust"
+
+    # Try both slug variants to be safe against API changes
+    for geo_type in ["NHS_Trust", "NHS Trust"]:
+        geo_url = f"https://api.ukhsa-dashboard.data.gov.uk/themes/infectious_disease/sub_themes/respiratory/topics/COVID-19/geography_types/{quote(geo_type)}/geographies"
+        try:
+            resp = session.get(geo_url, headers=headers, params={'format': 'json'}, timeout=10)
+            if resp.status_code == 200:
+                results = resp.json().get('results', [])
+                if results:
+                    valid_geographies = [r['name'] for r in results]
+                    correct_geo_type = geo_type
+                    print(f"  Found {len(valid_geographies)} valid Trust names under '{geo_type}'.")
+                    break
+        except Exception:
+            continue
+
+    if not valid_geographies:
+        print("  [Error] Could not fetch valid Trust geographies from the API.")
+        return []
 
     points = []
     for trust_name, (lat, lon) in TRUST_COORDS.items():
+        # Fuzzy match the hardcoded name to the official API name
+        matched_api_name = next((vg for vg in valid_geographies if vg.lower() in trust_name.lower() or trust_name.lower() in vg.lower()), None)
+
+        if not matched_api_name:
+            print(f"    [Skip] '{trust_name}' not found in official API list.")
+            continue
+
         try:
-            url = TRUST_METRIC_URL.format(geography=quote(trust_name))
-            response = session.get(url, headers=headers, params={'page_size': 365, 'format': 'json'}, timeout=15)
+            url = f"https://api.ukhsa-dashboard.data.gov.uk/themes/infectious_disease/sub_themes/respiratory/topics/COVID-19/geography_types/{quote(correct_geo_type)}/geographies/{quote(matched_api_name)}/metrics/COVID-19_healthcare_admissionByDay"
+
+            response = session.get(url, headers=headers, params={'page_size': 365, 'format': 'json'}, timeout=10)
             if response.status_code != 200:
-                print(f"    [HTTP {response.status_code}] Could not fetch '{trust_name}'")
+                print(f"    [HTTP {response.status_code}] Could not fetch data for '{matched_api_name}'")
                 continue
 
             results = response.json().get('results') or []
             if not results:
-                print(f"    [No Data] Empty results for '{trust_name}'")
+                print(f"    [No Data] Empty results for '{matched_api_name}'")
                 continue
 
             df = pd.DataFrame(results)[['date', 'metric_value']].copy()
@@ -126,16 +145,18 @@ def fetch_trust_map_data(days=7):
             df = df.sort_values('date').tail(days)
             total = float(pd.to_numeric(df['metric_value'], errors='coerce').fillna(0).sum())
 
-            points.append({
-                'trust': trust_name,
-                'lat': lat,
-                'lon': lon,
-                'admissions': max(0.0, total),
-                'date': df['date'].iloc[-1].strftime('%Y-%m-%d')
-            })
-            time.sleep(0.25)
+            if total > 0:
+                points.append({
+                    'trust': matched_api_name,
+                    'lat': lat,
+                    'lon': lon,
+                    'admissions': max(0.0, total),
+                    'date': df['date'].iloc[-1].strftime('%Y-%m-%d')
+                })
+            time.sleep(0.1)
+
         except Exception as e:
-            print(f"    Warning: Trust map fetch failed for '{trust_name}': {e}")
+            print(f"    Warning: Error fetching '{matched_api_name}': {e}")
             continue
 
     return points
