@@ -111,26 +111,26 @@ def fetch_trust_map_data(days=7):
     for trust_name, (lat, lon) in TRUST_COORDS.items():
         try:
             url = TRUST_METRIC_URL.format(geography=quote(trust_name))
-            response = session.get(url, headers=headers, params={'page_size': days, 'format': 'json'}, timeout=15)
+            response = session.get(url, headers=headers, params={'page_size': 365, 'format': 'json'}, timeout=15)
             if response.status_code != 200:
+                print(f"    [HTTP {response.status_code}] Could not fetch '{trust_name}'")
                 continue
 
             results = response.json().get('results') or []
             if not results:
+                print(f"    [No Data] Empty results for '{trust_name}'")
                 continue
 
             df = pd.DataFrame(results)[['date', 'metric_value']].copy()
             df['date'] = pd.to_datetime(df['date'])
             df = df.sort_values('date').tail(days)
             total = float(pd.to_numeric(df['metric_value'], errors='coerce').fillna(0).sum())
-            if total <= 0:
-                continue
 
             points.append({
                 'trust': trust_name,
                 'lat': lat,
                 'lon': lon,
-                'admissions': total,
+                'admissions': max(0.0, total),
                 'date': df['date'].iloc[-1].strftime('%Y-%m-%d')
             })
             time.sleep(0.25)
