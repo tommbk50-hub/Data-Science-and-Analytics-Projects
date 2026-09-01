@@ -50,7 +50,7 @@ API_TEMPLATE = "https://api.ukhsa-dashboard.data.gov.uk/themes/infectious_diseas
 
 TRUST_METRIC_URL = (
     "https://api.ukhsa-dashboard.data.gov.uk/themes/infectious_disease/sub_themes/respiratory"
-    "/topics/COVID-19/geography_types/NHS%20Trust/geographies/{geography}"
+    "/topics/COVID-19/geography_types/NHS_Trust/geographies/{geography}"
     "/metrics/COVID-19_healthcare_admissionByDay"
 )
 
