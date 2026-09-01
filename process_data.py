@@ -4,6 +4,7 @@ import json
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+from urllib.parse import quote
 import time
 from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.metrics import mean_absolute_error
@@ -50,7 +51,7 @@ API_TEMPLATE = "https://api.ukhsa-dashboard.data.gov.uk/themes/infectious_diseas
 TRUST_METRIC_URL = (
     "https://api.ukhsa-dashboard.data.gov.uk/themes/infectious_disease/sub_themes/respiratory"
     "/topics/COVID-19/geography_types/NHS%20Trust/geographies/{geography}"
-    "/metrics/COVID-19_healthcare_hospitalAdmissionsByDay"
+    "/metrics/COVID-19_healthcare_admissionByDay"
 )
 
 # Lightweight coordinate lookup for major NHS Trusts. Trusts that are not listed here
@@ -109,7 +110,7 @@ def fetch_trust_map_data(days=7):
     points = []
     for trust_name, (lat, lon) in TRUST_COORDS.items():
         try:
-            url = TRUST_METRIC_URL.format(geography=requests.utils.quote(trust_name))
+            url = TRUST_METRIC_URL.format(geography=quote(trust_name))
             response = session.get(url, headers=headers, params={'page_size': days, 'format': 'json'}, timeout=15)
             if response.status_code != 200:
                 continue
