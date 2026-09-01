@@ -86,7 +86,7 @@ TRUST_COORDS = {
 def fetch_trust_map_data(days=7):
     """Fetch COVID-19 hospital admissions per NHS Trust for the bubble map."""
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         'Accept': 'application/json'
     }
 
@@ -97,8 +97,8 @@ def fetch_trust_map_data(days=7):
 
     # 1. Discover exact geography names and the correct geography_type slug
     valid_geographies = []
-    correct_geo_type = "NHS_Trust"
-
+    correct_geo_type = ""
+    
     # Try both slug variants to be safe against API changes
     for geo_type in ["NHS_Trust", "NHS Trust"]:
         geo_url = f"https://api.ukhsa-dashboard.data.gov.uk/themes/infectious_disease/sub_themes/respiratory/topics/COVID-19/geography_types/{quote(geo_type)}/geographies"
@@ -107,7 +107,7 @@ def fetch_trust_map_data(days=7):
             if resp.status_code == 200:
                 results = resp.json().get('results', [])
                 if results:
-                    valid_geographies = [r['name'] for r in results]
+                    valid_geographies = [r['name'] for r in results if 'name' in r]
                     correct_geo_type = geo_type
                     print(f"  Found {len(valid_geographies)} valid Trust names under '{geo_type}'.")
                     break
@@ -122,14 +122,15 @@ def fetch_trust_map_data(days=7):
     for trust_name, (lat, lon) in TRUST_COORDS.items():
         # Fuzzy match the hardcoded name to the official API name
         matched_api_name = next((vg for vg in valid_geographies if vg.lower() in trust_name.lower() or trust_name.lower() in vg.lower()), None)
-
+        
         if not matched_api_name:
             print(f"    [Skip] '{trust_name}' not found in official API list.")
             continue
 
         try:
             url = f"https://api.ukhsa-dashboard.data.gov.uk/themes/infectious_disease/sub_themes/respiratory/topics/COVID-19/geography_types/{quote(correct_geo_type)}/geographies/{quote(matched_api_name)}/metrics/COVID-19_healthcare_admissionByDay"
-
+            
+            # UKHSA API handles pagination. We request page_size=365 to ensure recent dates are fetched.
             response = session.get(url, headers=headers, params={'page_size': 365, 'format': 'json'}, timeout=10)
             if response.status_code != 200:
                 print(f"    [HTTP {response.status_code}] Could not fetch data for '{matched_api_name}'")
@@ -169,7 +170,7 @@ def fetch_data(config):
     current_url = f"{url}?page_size=365&format=json"
     
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         'Accept': 'application/json'
     }
 
@@ -224,7 +225,7 @@ def evaluate_accuracy(df, weeks_back=52):
     dates = []
     actuals = []
     predictions = []
-    residuals = [] # NEW: Store individual errors
+    residuals = []
 
     for i in range(weeks_back, 0, -1):
         train_end_index = len(df) - i
@@ -266,8 +267,6 @@ def evaluate_accuracy(df, weeks_back=52):
         dates.append(target_date.strftime('%Y-%m-%d'))
         actuals.append(float(actual_value))
         predictions.append(float(final_pred))
-        
-        # Calculate Residual (Error)
         residuals.append(float(actual_value - final_pred))
 
     if not actuals: return None
@@ -279,7 +278,7 @@ def evaluate_accuracy(df, weeks_back=52):
         "dates": dates,
         "actuals": actuals,
         "predictions": predictions,
-        "residuals": residuals, # NEW: List of errors for histogram
+        "residuals": residuals,
         "mae": float(mae),
         "mape": float(mape)
     }
