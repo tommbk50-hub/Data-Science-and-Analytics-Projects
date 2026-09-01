@@ -535,6 +535,18 @@
             </div>
         </div>
 
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="metric-card-header">
+                        <h5 class="metric-title">COVID-19 Hospital Admissions by NHS Trust</h5>
+                        <div class="metric-subtitle">Bubble size and colour reflect recent admission volume per Trust</div>
+                    </div>
+                    <div class="card-body"><div id="chart-trust-map" class="chart-container"></div></div>
+                </div>
+            </div>
+        </div>
+
         <h3 class="section-header"><i class="fas fa-virus text-primary"></i>Influenza (Flu)<span class="badge-live">LIVE FORECAST</span></h3>
         <div class="row">
             <div class="col-12">
@@ -870,7 +882,7 @@ importance_scores = result.importances_mean</code></pre>
 
         // All Plotly containers on the page (used for responsive resizing).
         const ALL_CHART_IDS = chartsConfig.map(c => c.divId)
-            .concat(['chart-accuracy', 'chart-residuals', 'chart-importance']);
+            .concat(['chart-trust-map', 'chart-accuracy', 'chart-residuals', 'chart-importance']);
 
         // Key under which the last successfully loaded dataset is cached in the browser,
         // so the dashboard can still show the most recent plots if live data is unavailable.
@@ -1007,6 +1019,69 @@ importance_scores = result.importances_mean</code></pre>
                     divElement.innerHTML = `<div class="loading-msg text-danger"><i class="fas fa-times-circle me-2"></i>Error rendering chart: ${chartErr.message}</div>`;
                 }
             });
+
+            // 1b. RENDER NHS TRUST BUBBLE MAP
+            // Rendered after the main charts and fully isolated so missing or malformed
+            // map data can never block the historical/forecast plots.
+            const mapDiv = document.getElementById('chart-trust-map');
+            if (mapDiv) {
+                try {
+                    const points = (data['trust_map'] && data['trust_map'].points) || [];
+                    const validPoints = points.filter(p => p &&
+                        typeof p.lat === 'number' && typeof p.lon === 'number' &&
+                        typeof p.admissions === 'number' && isFinite(p.admissions));
+
+                    if (validPoints.length === 0) {
+                        throw new Error('No NHS Trust map data available');
+                    }
+
+                    const admissions = validPoints.map(p => p.admissions);
+                    const maxAdmissions = Math.max.apply(null, admissions);
+
+                    const traceMap = {
+                        type: 'scattergeo',
+                        mode: 'markers',
+                        lat: validPoints.map(p => p.lat),
+                        lon: validPoints.map(p => p.lon),
+                        text: validPoints.map(p => `${p.trust}<br>Admissions: ${p.admissions}`),
+                        hoverinfo: 'text',
+                        marker: {
+                            size: admissions,
+                            sizemode: 'area',
+                            sizeref: (2.0 * maxAdmissions) / (40 * 40),
+                            sizemin: 4,
+                            color: admissions,
+                            colorscale: 'Teal',
+                            reversescale: true,
+                            line: { color: 'rgba(15, 23, 42, 0.4)', width: 1 },
+                            colorbar: { title: 'Admissions', thickness: 12 }
+                        },
+                        name: 'NHS Trusts'
+                    };
+
+                    const layoutMap = {
+                        font: { family: 'Inter, sans-serif' },
+                        margin: { t: 20, b: 20, l: 20, r: 20 },
+                        geo: {
+                            scope: 'europe',
+                            resolution: 50,
+                            lonaxis: { range: [-9, 3] },
+                            lataxis: { range: [49.5, 59] },
+                            showland: true, landcolor: '#f8fafc',
+                            showcountries: true, countrycolor: '#cbd5e1',
+                            showcoastlines: true, coastlinecolor: '#94a3b8',
+                            bgcolor: 'rgba(0,0,0,0)'
+                        },
+                        showlegend: false,
+                        paper_bgcolor: 'rgba(0,0,0,0)'
+                    };
+
+                    Plotly.newPlot('chart-trust-map', [traceMap], layoutMap, PLOTLY_CONFIG);
+                } catch (mapErr) {
+                    console.warn('Error rendering NHS Trust map:', mapErr);
+                    mapDiv.innerHTML = `<div class="loading-msg text-warning"><i class="fas fa-exclamation-triangle me-2"></i>NHS Trust map data currently unavailable</div>`;
+                }
+            }
 
             // 2. RENDER ACCURACY CHART
             const hospitalData = data['hospital'];

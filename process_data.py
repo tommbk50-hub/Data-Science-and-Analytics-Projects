@@ -47,6 +47,98 @@ METRICS = {
 
 API_TEMPLATE = "https://api.ukhsa-dashboard.data.gov.uk/themes/infectious_disease/sub_themes/respiratory/topics/{topic}/geography_types/Nation/geographies/England/metrics/{metric_id}"
 
+TRUST_METRIC_URL = (
+    "https://api.ukhsa-dashboard.data.gov.uk/themes/infectious_disease/sub_themes/respiratory"
+    "/topics/COVID-19/geography_types/NHS%20Trust/geographies/{geography}"
+    "/metrics/COVID-19_healthcare_hospitalAdmissionsByDay"
+)
+
+# Lightweight coordinate lookup for major NHS Trusts. Trusts that are not listed here
+# are simply omitted from the map rather than treated as an error.
+TRUST_COORDS = {
+    "Barts Health NHS Trust": (51.5190, -0.0590),
+    "Guy's and St Thomas' NHS Foundation Trust": (51.5030, -0.0880),
+    "King's College Hospital NHS Foundation Trust": (51.4680, -0.0940),
+    "Imperial College Healthcare NHS Trust": (51.5170, -0.1740),
+    "University College London Hospitals NHS Foundation Trust": (51.5240, -0.1350),
+    "St George's University Hospitals NHS Foundation Trust": (51.4270, -0.1750),
+    "Royal Free London NHS Foundation Trust": (51.5530, -0.1650),
+    "Chelsea and Westminster Hospital NHS Foundation Trust": (51.4840, -0.1810),
+    "London North West University Healthcare NHS Trust": (51.5560, -0.3350),
+    "Manchester University NHS Foundation Trust": (53.4620, -2.2250),
+    "Liverpool University Hospitals NHS Foundation Trust": (53.4090, -2.9640),
+    "Leeds Teaching Hospitals NHS Trust": (53.8030, -1.5520),
+    "Sheffield Teaching Hospitals NHS Foundation Trust": (53.3800, -1.4900),
+    "Newcastle upon Tyne Hospitals NHS Foundation Trust": (54.9800, -1.6200),
+    "University Hospitals Birmingham NHS Foundation Trust": (52.4530, -1.9400),
+    "Nottingham University Hospitals NHS Trust": (52.9420, -1.1850),
+    "University Hospitals of Leicester NHS Trust": (52.6250, -1.1350),
+    "University Hospitals Bristol and Weston NHS Foundation Trust": (51.4580, -2.5960),
+    "Oxford University Hospitals NHS Foundation Trust": (51.7640, -1.2200),
+    "Cambridge University Hospitals NHS Foundation Trust": (52.1750, 0.1400),
+    "University Hospital Southampton NHS Foundation Trust": (50.9330, -1.4340),
+    "Portsmouth Hospitals University National Health Service Trust": (50.8480, -1.0680),
+    "Royal Devon University Healthcare NHS Foundation Trust": (50.7190, -3.5090),
+    "University Hospitals Plymouth NHS Trust": (50.4160, -4.1140),
+    "Norfolk and Norwich University Hospitals NHS Foundation Trust": (52.6210, 1.2200),
+    "Hull University Teaching Hospitals NHS Trust": (53.7460, -0.3560),
+    "University Hospitals Coventry and Warwickshire NHS Trust": (52.4220, -1.4400),
+    "Royal Wolverhampton NHS Trust": (52.5900, -2.1230),
+    "Northern Care Alliance NHS Foundation Trust": (53.5100, -2.2700),
+    "Lancashire Teaching Hospitals NHS Foundation Trust": (53.7480, -2.7050),
+}
+
+def fetch_trust_map_data(days=7):
+    """Fetch COVID-19 hospital admissions per NHS Trust for the bubble map.
+
+    Returns a list of {trust, lat, lon, admissions, date} dicts, or an empty list if
+    nothing could be retrieved. Individual Trust failures are skipped so a single
+    timeout cannot lose the whole map.
+    """
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept': 'application/json'
+    }
+
+    retry = Retry(total=2, backoff_factor=2, status_forcelist=[429, 500, 502, 503, 504])
+    adapter = HTTPAdapter(max_retries=retry)
+    session = requests.Session()
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
+
+    points = []
+    for trust_name, (lat, lon) in TRUST_COORDS.items():
+        try:
+            url = TRUST_METRIC_URL.format(geography=requests.utils.quote(trust_name))
+            response = session.get(url, headers=headers, params={'page_size': days, 'format': 'json'}, timeout=15)
+            if response.status_code != 200:
+                continue
+
+            results = response.json().get('results') or []
+            if not results:
+                continue
+
+            df = pd.DataFrame(results)[['date', 'metric_value']].copy()
+            df['date'] = pd.to_datetime(df['date'])
+            df = df.sort_values('date').tail(days)
+            total = float(pd.to_numeric(df['metric_value'], errors='coerce').fillna(0).sum())
+            if total <= 0:
+                continue
+
+            points.append({
+                'trust': trust_name,
+                'lat': lat,
+                'lon': lon,
+                'admissions': total,
+                'date': df['date'].iloc[-1].strftime('%Y-%m-%d')
+            })
+            time.sleep(0.25)
+        except Exception as e:
+            print(f"    Warning: Trust map fetch failed for '{trust_name}': {e}")
+            continue
+
+    return points
+
 def fetch_data(config):
     url = API_TEMPLATE.format(topic=config['topic'], metric_id=config['metric_id'])
     print(f"  Fetching {config['topic']} data: {config['metric_id']}...")
@@ -285,6 +377,22 @@ for key, config in METRICS.items():
         }
     else:
         print("  Skipping (No data found).")
+
+# Optional NHS Trust bubble map. Isolated so that API timeouts or missing map data
+# can never abort the forecasting job above.
+try:
+    print("\nProcessing: COVID Hospital Admissions by NHS Trust (map)")
+    trust_points = fetch_trust_map_data()
+    if trust_points:
+        full_dashboard_data['trust_map'] = {
+            "meta": {"name": "COVID: Hospital Admissions by NHS Trust", "topic": "COVID-19"},
+            "points": trust_points
+        }
+        print(f"  Retrieved {len(trust_points)} Trusts.")
+    else:
+        print("  Skipping map (No Trust data found).")
+except Exception as e:
+    print(f"  Skipping map (Error building Trust map data: {e})")
 
 with open('dashboard_data.json', 'w') as f:
     json.dump(full_dashboard_data, f)
