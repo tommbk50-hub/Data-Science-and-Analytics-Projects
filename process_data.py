@@ -48,119 +48,97 @@ METRICS = {
 
 API_TEMPLATE = "https://api.ukhsa-dashboard.data.gov.uk/themes/infectious_disease/sub_themes/respiratory/topics/{topic}/geography_types/Nation/geographies/England/metrics/{metric_id}"
 
-# Lightweight coordinate lookup for major NHS Trusts. Trusts that are not listed here
-# are simply omitted from the map rather than treated as an error.
-TRUST_COORDS = {
-    "Barts Health NHS Trust": (51.5190, -0.0590),
-    "Guy's and St Thomas' NHS Foundation Trust": (51.5030, -0.0880),
-    "King's College Hospital NHS Foundation Trust": (51.4680, -0.0940),
-    "Imperial College Healthcare NHS Trust": (51.5170, -0.1740),
-    "University College London Hospitals NHS Foundation Trust": (51.5240, -0.1350),
-    "St George's University Hospitals NHS Foundation Trust": (51.4270, -0.1750),
-    "Royal Free London NHS Foundation Trust": (51.5530, -0.1650),
-    "Chelsea and Westminster Hospital NHS Foundation Trust": (51.4840, -0.1810),
-    "London North West University Healthcare NHS Trust": (51.5560, -0.3350),
-    "Manchester University NHS Foundation Trust": (53.4620, -2.2250),
-    "Liverpool University Hospitals NHS Foundation Trust": (53.4090, -2.9640),
-    "Leeds Teaching Hospitals NHS Trust": (53.8030, -1.5520),
-    "Sheffield Teaching Hospitals NHS Foundation Trust": (53.3800, -1.4900),
-    "Newcastle upon Tyne Hospitals NHS Foundation Trust": (54.9800, -1.6200),
-    "University Hospitals Birmingham NHS Foundation Trust": (52.4530, -1.9400),
-    "Nottingham University Hospitals NHS Trust": (52.9420, -1.1850),
-    "University Hospitals of Leicester NHS Trust": (52.6250, -1.1350),
-    "University Hospitals Bristol and Weston NHS Foundation Trust": (51.4580, -2.5960),
-    "Oxford University Hospitals NHS Foundation Trust": (51.7640, -1.2200),
-    "Cambridge University Hospitals NHS Foundation Trust": (52.1750, 0.1400),
-    "University Hospital Southampton NHS Foundation Trust": (50.9330, -1.4340),
-    "Portsmouth Hospitals University National Health Service Trust": (50.8480, -1.0680),
-    "Royal Devon University Healthcare NHS Foundation Trust": (50.7190, -3.5090),
-    "University Hospitals Plymouth NHS Trust": (50.4160, -4.1140),
-    "Norfolk and Norwich University Hospitals NHS Foundation Trust": (52.6210, 1.2200),
-    "Hull University Teaching Hospitals NHS Trust": (53.7460, -0.3560),
-    "University Hospitals Coventry and Warwickshire NHS Trust": (52.4220, -1.4400),
-    "Royal Wolverhampton NHS Trust": (52.5900, -2.1230),
-    "Northern Care Alliance NHS Foundation Trust": (53.5100, -2.2700),
-    "Lancashire Teaching Hospitals NHS Foundation Trust": (53.7480, -2.7050),
+# Approximate centroid coordinates for the nine UKHSA Regions. Regions returned by
+# the API that are not listed here fall back to a central England coordinate.
+REGION_COORDS = {
+    "London": (51.5074, -0.1278),
+    "South East": (51.2564, -0.7252),
+    "South West": (50.8000, -3.8000),
+    "East of England": (52.2400, 0.4000),
+    "West Midlands": (52.4800, -1.9000),
+    "East Midlands": (52.9500, -0.9500),
+    "North West": (53.4800, -2.2400),
+    "Yorkshire and The Humber": (53.8000, -1.5500),
+    "North East": (54.9700, -1.6100),
 }
 
-def fetch_trust_map_data(days=7):
-    """Fetch COVID-19 hospital admissions per NHS Trust for the bubble map."""
+REGION_MAP_METRICS = {
+    "pos_value": "influenza_testing_positivityByWeek",
+    "adm_value": "influenza_healthcare_hospitalAdmissionRateByWeek",
+    "icu_value": "influenza_healthcare_ICUHDUadmissionRateByWeek",
+}
+
+REGION_BASE_URL = (
+    "https://api.ukhsa-dashboard.data.gov.uk/themes/infectious_disease/sub_themes/"
+    "respiratory/topics/Influenza/geography_types/UKHSA%20Region/geographies"
+)
+
+
+def fetch_region_influenza_map_data(days=7):
+    """Fetch the latest Influenza positivity, hospital and ICU/HDU rates per UKHSA Region."""
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         'Accept': 'application/json'
     }
 
     retry = Retry(total=2, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504])
-    adapter = HTTPAdapter(max_retries=retry)
     session = requests.Session()
-    session.mount('https://', adapter)
+    session.mount('https://', HTTPAdapter(max_retries=retry))
 
-    # 1. Discover exact geography names and the correct geography_type slug
-    valid_geographies = []
-    correct_geo_type = ""
-    
-    # Try both slug variants to be safe against API changes
-    for geo_type in ["NHS_Trust", "NHS Trust"]:
-        geo_url = f"https://api.ukhsa-dashboard.data.gov.uk/themes/infectious_disease/sub_themes/respiratory/topics/COVID-19/geography_types/{quote(geo_type)}/geographies"
-        try:
-            resp = session.get(geo_url, headers=headers, params={'format': 'json'}, timeout=10)
-            if resp.status_code == 200:
-                results = resp.json().get('results', [])
-                if results:
-                    valid_geographies = [r['name'] for r in results if 'name' in r]
-                    correct_geo_type = geo_type
-                    print(f"  Found {len(valid_geographies)} valid Trust names under '{geo_type}'.")
-                    break
-        except Exception:
-            continue
+    try:
+        resp = session.get(REGION_BASE_URL, headers=headers, params={'format': 'json'}, timeout=15)
+        if resp.status_code != 200:
+            print(f"  [HTTP {resp.status_code}] Could not fetch UKHSA Region list.")
+            return None
+        payload = resp.json()
+    except Exception as e:
+        print(f"  [Error] Could not fetch UKHSA Region list: {e}")
+        return None
 
-    if not valid_geographies:
-        print("  [Error] Could not fetch valid Trust geographies from the API.")
-        return []
+    regions = payload if isinstance(payload, list) else payload.get('results', [])
+    region_names = [r['name'] for r in regions if isinstance(r, dict) and 'name' in r]
+    if not region_names:
+        print("  [Error] UKHSA Region list was empty.")
+        return None
+
+    end_date = pd.Timestamp.utcnow().normalize().tz_localize(None)
+    start_date = end_date - pd.Timedelta(days=days)
+    date_range_str = f"{start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}"
 
     points = []
-    for trust_name, (lat, lon) in TRUST_COORDS.items():
-        # Fuzzy match the hardcoded name to the official API name
-        matched_api_name = next((vg for vg in valid_geographies if vg.lower() in trust_name.lower() or trust_name.lower() in vg.lower()), None)
-        
-        if not matched_api_name:
-            print(f"    [Skip] '{trust_name}' not found in official API list.")
-            continue
+    for region_name in region_names:
+        lat, lon = REGION_COORDS.get(region_name, (54.0, -2.0))
+        record = {'region': region_name, 'lat': lat, 'lon': lon, 'date': date_range_str}
+        has_value = False
 
-        try:
-            url = f"https://api.ukhsa-dashboard.data.gov.uk/themes/infectious_disease/sub_themes/respiratory/topics/COVID-19/geography_types/{quote(correct_geo_type)}/geographies/{quote(matched_api_name)}/metrics/COVID-19_healthcare_admissionByDay"
-            
-            # UKHSA API handles pagination. We request page_size=365 to ensure recent dates are fetched.
-            response = session.get(url, headers=headers, params={'page_size': 365, 'format': 'json'}, timeout=10)
-            if response.status_code != 200:
-                print(f"    [HTTP {response.status_code}] Could not fetch data for '{matched_api_name}'")
-                continue
-
-            results = response.json().get('results') or []
-            if not results:
-                print(f"    [No Data] Empty results for '{matched_api_name}'")
-                continue
-
-            df = pd.DataFrame(results)[['date', 'metric_value']].copy()
-            df['date'] = pd.to_datetime(df['date'])
-            df = df.sort_values('date').tail(days)
-            total = float(pd.to_numeric(df['metric_value'], errors='coerce').fillna(0).sum())
-
-            if total > 0:
-                points.append({
-                    'trust': matched_api_name,
-                    'lat': lat,
-                    'lon': lon,
-                    'admissions': max(0.0, total),
-                    'date': df['date'].iloc[-1].strftime('%Y-%m-%d')
-                })
+        for key, metric_id in REGION_MAP_METRICS.items():
+            record[key] = None
+            url = f"{REGION_BASE_URL}/{quote(region_name)}/metrics/{metric_id}"
+            try:
+                r = session.get(url, headers=headers, params={'page_size': 1, 'format': 'json'}, timeout=10)
+                if r.status_code != 200:
+                    continue
+                results = r.json().get('results') or []
+                if not results:
+                    continue
+                value = pd.to_numeric(results[0].get('metric_value'), errors='coerce')
+                if pd.isna(value):
+                    continue
+                record[key] = float(value)
+                record[f"{key}_date"] = results[0].get('date')
+                has_value = True
+            except Exception as e:
+                print(f"    Warning: Error fetching '{metric_id}' for '{region_name}': {e}")
             time.sleep(0.1)
 
-        except Exception as e:
-            print(f"    Warning: Error fetching '{matched_api_name}': {e}")
-            continue
+        if has_value:
+            points.append(record)
 
-    return points
+    if not points:
+        return None
+
+    return {'points': points, 'date_range': date_range_str}
+
 
 def fetch_data(config):
     url = API_TEMPLATE.format(topic=config['topic'], metric_id=config['metric_id'])
@@ -399,21 +377,22 @@ for key, config in METRICS.items():
     else:
         print("  Skipping (No data found).")
 
-# Optional NHS Trust bubble map. Isolated so that API timeouts or missing map data
-# can never abort the forecasting job above.
+# Optional UKHSA Region influenza maps. Isolated so that API timeouts or missing map
+# data can never abort the forecasting job above.
 try:
-    print("\nProcessing: COVID Hospital Admissions by NHS Trust (map)")
-    trust_points = fetch_trust_map_data()
-    if trust_points:
-        full_dashboard_data['trust_map'] = {
-            "meta": {"name": "COVID: Hospital Admissions by NHS Trust", "topic": "COVID-19"},
-            "points": trust_points
+    print("\nProcessing: Influenza Metrics by UKHSA Region (maps)")
+    region_map = fetch_region_influenza_map_data()
+    if region_map:
+        full_dashboard_data['region_flu_map'] = {
+            "meta": {"name": "Influenza Metrics by UKHSA Region", "topic": "Influenza"},
+            "date_range": region_map['date_range'],
+            "points": region_map['points']
         }
-        print(f"  Retrieved {len(trust_points)} Trusts.")
+        print(f"  Retrieved {len(region_map['points'])} regions.")
     else:
-        print("  Skipping map (No Trust data found).")
+        print("  Skipping maps (No UKHSA Region data found).")
 except Exception as e:
-    print(f"  Skipping map (Error building Trust map data: {e})")
+    print(f"  Skipping maps (Error building UKHSA Region map data: {e})")
 
 with open('dashboard_data.json', 'w') as f:
     json.dump(full_dashboard_data, f)

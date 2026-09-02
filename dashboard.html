@@ -539,10 +539,10 @@
             <div class="col-12">
                 <div class="card">
                     <div class="metric-card-header">
-                        <h5 class="metric-title">COVID-19 Hospital Admissions by NHS Trust</h5>
-                        <div class="metric-subtitle">Bubble size and colour reflect recent admission volume per Trust</div>
+                        <h5 class="metric-title">Influenza Metrics by UKHSA Region</h5>
+                        <div class="metric-subtitle">Latest testing positivity, hospital admission rate and ICU/HDU admission rate per UKHSA Region</div>
                     </div>
-                    <div class="card-body"><div id="chart-trust-map" class="chart-container"></div></div>
+                    <div class="card-body"><div id="chart-region-flu-map" class="chart-container"></div></div>
                 </div>
             </div>
         </div>
@@ -882,7 +882,7 @@ importance_scores = result.importances_mean</code></pre>
 
         // All Plotly containers on the page (used for responsive resizing).
         const ALL_CHART_IDS = chartsConfig.map(c => c.divId)
-            .concat(['chart-trust-map', 'chart-accuracy', 'chart-residuals', 'chart-importance']);
+            .concat(['chart-region-flu-map', 'chart-accuracy', 'chart-residuals', 'chart-importance']);
 
         // Key under which the last successfully loaded dataset is cached in the browser,
         // so the dashboard can still show the most recent plots if live data is unavailable.
@@ -1020,66 +1020,114 @@ importance_scores = result.importances_mean</code></pre>
                 }
             });
 
-            // 1b. RENDER NHS TRUST BUBBLE MAP
+            // 1b. RENDER INFLUENZA MAPS BY UKHSA REGION
             // Rendered after the main charts and fully isolated so missing or malformed
             // map data can never block the historical/forecast plots.
-            const mapDiv = document.getElementById('chart-trust-map');
+            const mapDiv = document.getElementById('chart-region-flu-map');
             if (mapDiv) {
                 try {
-                    const points = (data['trust_map'] && data['trust_map'].points) || [];
-                    const validPoints = points.filter(p => p &&
-                        typeof p.lat === 'number' && typeof p.lon === 'number' &&
-                        typeof p.admissions === 'number' && isFinite(p.admissions));
+                    const regionData = data['region_flu_map'] || {};
+                    const points = regionData.points || [];
+                    const isNum = v => typeof v === 'number' && isFinite(v);
+                    const validPoints = points.filter(p => p && isNum(p.lat) && isNum(p.lon) &&
+                        (isNum(p.pos_value) || isNum(p.adm_value) || isNum(p.icu_value)));
 
                     if (validPoints.length === 0) {
-                        throw new Error('No NHS Trust map data available');
+                        throw new Error('No UKHSA Region influenza map data available');
                     }
 
-                    const admissions = validPoints.map(p => p.admissions);
-                    const maxAdmissions = Math.max.apply(null, admissions);
+                    const panels = [
+                        { key: 'pos_value', label: 'Testing Positivity (%)', hover: 'Positivity', suffix: '%', colorscale: 'Blues', geo: 'geo' },
+                        { key: 'adm_value', label: 'Hospital Admission Rate', hover: 'Admission Rate', suffix: '', colorscale: 'Reds', geo: 'geo2' },
+                        { key: 'icu_value', label: 'ICU/HDU Admission Rate', hover: 'ICU Rate', suffix: '', colorscale: 'YlOrBr', geo: 'geo3' }
+                    ];
 
-                    const traceMap = {
-                        type: 'scattergeo',
-                        mode: 'markers',
-                        lat: validPoints.map(p => p.lat),
-                        lon: validPoints.map(p => p.lon),
-                        text: validPoints.map(p => `${p.trust}<br>Admissions: ${p.admissions}`),
-                        hoverinfo: 'text',
-                        marker: {
-                            size: admissions,
-                            sizemode: 'area',
-                            sizeref: (2.0 * maxAdmissions) / (40 * 40),
-                            sizemin: 4,
-                            color: admissions,
-                            colorscale: 'Teal',
-                            reversescale: true,
-                            line: { color: 'rgba(15, 23, 42, 0.4)', width: 1 },
-                            colorbar: { title: 'Admissions', thickness: 12 }
-                        },
-                        name: 'NHS Trusts'
-                    };
-
+                    const traces = [];
+                    const annotations = [];
                     const layoutMap = {
                         font: { family: 'Inter, sans-serif' },
-                        margin: { t: 20, b: 20, l: 20, r: 20 },
-                        geo: {
-                            scope: 'europe',
-                            resolution: 50,
-                            lonaxis: { range: [-9, 3] },
-                            lataxis: { range: [49.5, 59] },
-                            showland: true, landcolor: '#f8fafc',
-                            showcountries: true, countrycolor: '#cbd5e1',
-                            showcoastlines: true, coastlinecolor: '#94a3b8',
-                            bgcolor: 'rgba(0,0,0,0)'
-                        },
+                        margin: { t: 40, b: 20, l: 10, r: 10 },
                         showlegend: false,
                         paper_bgcolor: 'rgba(0,0,0,0)'
                     };
 
-                    Plotly.newPlot('chart-trust-map', [traceMap], layoutMap, PLOTLY_CONFIG);
+                    panels.forEach((panel, i) => {
+                        const domainStart = i / panels.length;
+                        const domainEnd = (i + 1) / panels.length;
+
+                        layoutMap[panel.geo] = {
+                            scope: 'europe',
+                            resolution: 50,
+                            projection: { type: 'mercator' },
+                            lonaxis: { range: [-7, 3] },
+                            lataxis: { range: [49.8, 56.5] },
+                            showland: true, landcolor: '#f8fafc',
+                            showcountries: true, countrycolor: '#cbd5e1',
+                            showcoastlines: true, coastlinecolor: '#94a3b8',
+                            bgcolor: 'rgba(0,0,0,0)',
+                            domain: { x: [domainStart, domainEnd], y: [0, 1] }
+                        };
+
+                        annotations.push({
+                            text: panel.label,
+                            showarrow: false,
+                            xref: 'paper', yref: 'paper',
+                            x: (domainStart + domainEnd) / 2, y: 1.04,
+                            xanchor: 'center', yanchor: 'bottom',
+                            font: { size: 13, color: '#334155' }
+                        });
+
+                        const panelPoints = validPoints.filter(p => isNum(p[panel.key]));
+                        if (panelPoints.length === 0) return;
+
+                        const values = panelPoints.map(p => p[panel.key]);
+                        const maxValue = Math.max.apply(null, values) || 1;
+
+                        traces.push({
+                            type: 'scattergeo',
+                            geo: panel.geo,
+                            mode: 'markers',
+                            lat: panelPoints.map(p => p.lat),
+                            lon: panelPoints.map(p => p.lon),
+                            text: panelPoints.map(p => `${p.region}<br>${panel.hover}: ${p[panel.key]}${panel.suffix}`),
+                            hoverinfo: 'text',
+                            name: panel.label,
+                            marker: {
+                                size: values,
+                                sizemode: 'area',
+                                sizeref: (2.0 * maxValue) / (40 * 40),
+                                sizemin: 6,
+                                color: values,
+                                colorscale: panel.colorscale,
+                                line: { color: 'rgba(15, 23, 42, 0.4)', width: 1 },
+                                showscale: true,
+                                colorbar: {
+                                    thickness: 10,
+                                    len: 0.8,
+                                    x: domainEnd - 0.015,
+                                    xanchor: 'right'
+                                }
+                            }
+                        });
+                    });
+
+                    if (traces.length === 0) {
+                        throw new Error('No UKHSA Region influenza metrics available');
+                    }
+
+                    layoutMap.annotations = annotations;
+                    if (regionData.date_range) {
+                        const subtitle = mapDiv.closest('.card').querySelector('.metric-subtitle');
+                        if (subtitle && !subtitle.dataset.dateRange) {
+                            subtitle.dataset.dateRange = regionData.date_range;
+                            subtitle.textContent += ` • ${regionData.date_range}`;
+                        }
+                    }
+
+                    Plotly.newPlot('chart-region-flu-map', traces, layoutMap, PLOTLY_CONFIG);
                 } catch (mapErr) {
-                    console.warn('Error rendering NHS Trust map:', mapErr);
-                    mapDiv.innerHTML = `<div class="loading-msg text-warning"><i class="fas fa-exclamation-triangle me-2"></i>NHS Trust map data currently unavailable</div>`;
+                    console.warn('Error rendering UKHSA Region influenza maps:', mapErr);
+                    mapDiv.innerHTML = `<div class="loading-msg text-warning"><i class="fas fa-exclamation-triangle me-2"></i>UKHSA Region influenza map data currently unavailable</div>`;
                 }
             }
 
