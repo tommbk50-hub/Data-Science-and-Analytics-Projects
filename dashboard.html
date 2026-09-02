@@ -1148,7 +1148,7 @@ importance_scores = result.importances_mean</code></pre>
                         for (let i = 0; i < Math.min(actuals.length, preds.length); i++) {
                             const a = actuals[i], p = preds[i];
                             if (typeof a === 'number' && typeof p === 'number' && a !== 0) {
-                                sumPctErr += Math.abs((a - p) / a);
+                                sumPctErr += Math.abs((a - p) / Math.max(a, 1));
                                 n++;
                             }
                         }
@@ -1209,6 +1209,7 @@ importance_scores = result.importances_mean</code></pre>
                             showlegend: true, legend: { orientation: 'h', y: 1.1 },
                             paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)'
                         };
+                        document.getElementById('chart-residuals').innerHTML = '';
                         Plotly.newPlot('chart-residuals', [traceResid].concat(bellTraces), layoutResid, PLOTLY_CONFIG);
                     } else {
                         document.getElementById('chart-residuals').innerHTML = `<div class="loading-msg text-warning"><i class="fas fa-exclamation-triangle me-2"></i>Residual data not available</div>`;
@@ -1238,6 +1239,7 @@ importance_scores = result.importances_mean</code></pre>
                         yaxis: { title: 'Feature' },
                         paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)'
                     };
+                    document.getElementById('chart-importance').innerHTML = '';
                     Plotly.newPlot('chart-importance', [traceImp], layoutImp, PLOTLY_CONFIG);
                 } catch (impErr) {
                     console.error('Error rendering importance chart:', impErr);
