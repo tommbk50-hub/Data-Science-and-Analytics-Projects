@@ -1039,7 +1039,7 @@ importance_scores = result.importances_mean</code></pre>
                     const panels = [
                         { key: 'pos_value', label: 'Testing Positivity (%)', hover: 'Positivity', suffix: '%', colorscale: 'Blues', geo: 'geo' },
                         { key: 'adm_value', label: 'Hospital Admission Rate', hover: 'Admission Rate', suffix: '', colorscale: 'Reds', geo: 'geo2' },
-                        { key: 'icu_value', label: 'ICU/HDU Admission Rate', hover: 'ICU Rate', suffix: '', colorscale: 'YlOrBr', geo: 'geo3' }
+                        { key: 'icu_value', label: 'ICU/HDU Admission Rate', hover: 'ICU Rate', suffix: '', colorscale: [[0, 'lightyellow'], [1, 'yellow']], geo: 'geo3' }
                     ];
 
                     const traces = [];
@@ -1099,6 +1099,7 @@ importance_scores = result.importances_mean</code></pre>
                                 sizemin: 6,
                                 color: values,
                                 colorscale: panel.colorscale,
+                                cmin: 0,
                                 line: { color: 'rgba(15, 23, 42, 0.4)', width: 1 },
                                 showscale: true,
                                 colorbar: {
